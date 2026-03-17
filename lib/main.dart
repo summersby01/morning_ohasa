@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -733,10 +734,11 @@ class _HomeScreenState extends State<HomeScreen> {
             SafeArea(
               child: LayoutBuilder(
                 builder: (BuildContext context, BoxConstraints constraints) {
-                  return Padding(
+                  final content = Padding(
                     padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         _buildHeader(today, currentItem['emoji'] as String),
                         const SizedBox(height: 10),
@@ -785,7 +787,24 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   );
-                ),
+
+                  if (!kIsWeb) {
+                    return content;
+                  }
+
+                  return Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: 460,
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: Align(
+                        alignment: const Alignment(0, -0.12),
+                        child: content,
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
             Positioned(
@@ -814,7 +833,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildHeader(DateTime today, String emoji) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      padding: const EdgeInsets.fromLTRB(16, 13, 16, 13),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -824,7 +843,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Color(0xFFF2ECFF),
           ],
         ),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: _cardBorder.withValues(alpha: 0.95),
         ),
@@ -840,8 +859,8 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 72,
-            height: 64,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: LinearGradient(
@@ -855,15 +874,15 @@ class _HomeScreenState extends State<HomeScreen> {
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x227C5CFA),
-                  blurRadius: 18,
-                  offset: Offset(0, 8),
+                  blurRadius: 16,
+                  offset: Offset(0, 7),
                 ),
               ],
             ),
             alignment: Alignment.center,
-            child: Center(child: _buildSafeSymbol(emoji, size: 28)),
+            child: Center(child: _buildSafeSymbol(emoji, size: 24)),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -897,30 +916,30 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 const Text(
                   '오늘의 오하아사',
                   style: TextStyle(
-                    fontSize: 23,
+                    fontSize: 21,
                     fontWeight: FontWeight.w900,
                     color: _textPrimary,
                     height: 1.05,
                     letterSpacing: -0.6,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Row(
                   children: [
                     Text(
                       '${today.year}.${today.month}.${today.day}',
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         color: _textSecondary,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.1,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     TextButton(
                       onPressed: _changeZodiac,
                       style: TextButton.styleFrom(
@@ -932,7 +951,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: const Text(
                         '별자리 변경',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -954,7 +973,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(20),
         onTap: _showRankingsSheet,
         child: Ink(
           decoration: BoxDecoration(
@@ -966,20 +985,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 Color(0xFFF2ECFF),
               ],
             ),
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: _cardBorder.withValues(alpha: 0.92),
             ),
             boxShadow: _cardShadow,
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 14, 12),
+            padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
             child: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 7,
+                    horizontal: 9,
+                    vertical: 6,
                   ),
                   decoration: BoxDecoration(
                     color: _peach.withValues(alpha: 0.76),
@@ -988,7 +1007,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: const Text(
                     '오늘의 오하아사 순위',
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 10,
                       color: _textSecondary,
                       fontWeight: FontWeight.w800,
                     ),
@@ -997,15 +1016,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(width: 10),
                 _buildZodiacIcon(
                   widget.zodiacKey,
-                  size: 20,
+                  size: 18,
                   color: _sunrise,
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     '${_currentZodiac.nameKo} 오늘 $displayedRank위',
                     style: const TextStyle(
-                      fontSize: 18,
+                      fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: _textPrimary,
                       letterSpacing: -0.3,
@@ -1015,7 +1034,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const Icon(
                   Icons.chevron_right_rounded,
                   color: _textSecondary,
-                  size: 22,
+                  size: 20,
                 ),
               ],
             ),
@@ -1112,7 +1131,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMessageCard(String message) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -1131,7 +1150,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
               color: _peach.withValues(alpha: 0.58),
               borderRadius: BorderRadius.circular(999),
@@ -1139,19 +1158,19 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Text(
               '오늘의 한마디',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 11,
                 color: Color(0xFF6A4FE0),
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Text(
             message,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              fontSize: 22,
-              height: 1.38,
+              fontSize: 18,
+              height: 1.22,
               fontWeight: FontWeight.w700,
               color: _textPrimary,
               letterSpacing: -0.5,
@@ -1164,7 +1183,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildScoreCard(int score) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -1185,15 +1204,15 @@ class _HomeScreenState extends State<HomeScreen> {
           const Text(
             '오늘 점수',
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 12,
               color: _textSecondary,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 13),
+            padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
@@ -1218,14 +1237,14 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               children: [
                 Container(
-                  width: 42,
-                  height: 5,
+                  width: 34,
+                  height: 4,
                   decoration: BoxDecoration(
                     color: _peach.withValues(alpha: 0.82),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 6),
                 ShaderMask(
                   shaderCallback: (bounds) => const LinearGradient(
                     begin: Alignment.topCenter,
@@ -1238,7 +1257,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Text(
                     '$score',
                     style: const TextStyle(
-                      fontSize: 34,
+                      fontSize: 26,
                       fontWeight: FontWeight.w900,
                       color: Colors.white,
                       height: 1,
@@ -1256,7 +1275,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildActionCard(String action) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -1277,32 +1296,32 @@ class _HomeScreenState extends State<HomeScreen> {
           const Text(
             '추천 행동',
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 12,
               color: _textSecondary,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Container(
-            width: 44,
-            height: 44,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: _peach.withValues(alpha: 0.58),
               shape: BoxShape.circle,
             ),
             child: const Icon(
               Icons.wb_sunny_rounded,
-              size: 24,
+              size: 20,
               color: _sunrise,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           Text(
             action,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              fontSize: 15,
-              height: 1.3,
+              fontSize: 13,
+              height: 1.18,
               fontWeight: FontWeight.w700,
               color: _textPrimary,
               letterSpacing: -0.2,
@@ -1359,7 +1378,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onTap: onTap,
           borderRadius: BorderRadius.circular(16),
           child: Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(11),
             decoration: BoxDecoration(
               color: backgroundColor,
               borderRadius: BorderRadius.circular(16),
