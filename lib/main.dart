@@ -1,15 +1,27 @@
-import 'dart:math';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:screenshot/screenshot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'share_card.dart';
 import 'zodiac_selection_screen.dart';
 
 const String zodiacPreferenceKey = 'selected_zodiac_key';
+const String horoscopeDatePreferenceKey = 'daily_horoscope_date';
+const String horoscopeZodiacPreferenceKey = 'daily_horoscope_zodiac_key';
+const String horoscopeMessagePreferenceKey = 'daily_horoscope_message';
+const String horoscopeScorePreferenceKey = 'daily_horoscope_score';
+const String horoscopeActionPreferenceKey = 'daily_horoscope_action';
+const String horoscopeRankPreferenceKey = 'daily_horoscope_rank';
+const String horoscopeEmojiPreferenceKey = 'daily_horoscope_emoji';
 
 const Map<String, ZodiacMeta> zodiacMeta = <String, ZodiacMeta>{
   'aries': ZodiacMeta(nameKo: '양자리', emoji: '♈️'),
@@ -360,7 +372,6 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color _textSecondary = Color(0xFF6D6290);
   static const Color _cardBorder = Color(0xFFD9CCFF);
   static const double _cardRadius = 28;
-  static const EdgeInsets _cardPadding = EdgeInsets.all(22);
   static const List<BoxShadow> _cardShadow = [
     BoxShadow(
       color: Color(0x12000000),
@@ -369,8 +380,8 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   ];
 
-  int currentIndex = 0;
-  final Random random = Random();
+  final ScreenshotController _screenshotController = ScreenshotController();
+  Map<String, dynamic>? _dailyHoroscopeResult;
 
   ZodiacMeta get _currentZodiac =>
       zodiacMeta[widget.zodiacKey] ?? zodiacMeta['aries']!;
@@ -386,16 +397,121 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int get _currentZodiacRank => _rankForZodiac(widget.zodiacKey);
 
-  void updateOhasa() {
+  @override
+  void initState() {
+    super.initState();
+    _dailyHoroscopeResult = _generateDailyHoroscope();
+    _loadOrCreateDailyHoroscope();
+  }
+
+  String _todayString() {
+    final now = DateTime.now();
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$month-$day';
+  }
+
+  Map<String, dynamic> _generateDailyHoroscope() {
+    final zodiacItems = _currentZodiacItems;
+    final zodiacIndex = zodiacMeta.keys.toList().indexOf(widget.zodiacKey);
+    final seed =
+        DateTime.now().year * 10000 +
+        DateTime.now().month * 100 +
+        DateTime.now().day +
+        (zodiacIndex == -1 ? 0 : zodiacIndex);
+    final selectedItem = zodiacItems[seed % zodiacItems.length];
+
+    return <String, dynamic>{
+      'date': _todayString(),
+      'zodiacKey': widget.zodiacKey,
+      'message': selectedItem['message'],
+      'score': selectedItem['score'],
+      'action': selectedItem['action'],
+      'rank': _currentZodiacRank,
+      'emoji': selectedItem['emoji'],
+    };
+  }
+
+  Future<void> _saveDailyHoroscope(Map<String, dynamic> result) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      horoscopeDatePreferenceKey,
+      result['date'] as String,
+    );
+    await preferences.setString(
+      horoscopeZodiacPreferenceKey,
+      result['zodiacKey'] as String,
+    );
+    await preferences.setString(
+      horoscopeMessagePreferenceKey,
+      result['message'] as String,
+    );
+    await preferences.setInt(
+      horoscopeScorePreferenceKey,
+      result['score'] as int,
+    );
+    await preferences.setString(
+      horoscopeActionPreferenceKey,
+      result['action'] as String,
+    );
+    await preferences.setInt(
+      horoscopeRankPreferenceKey,
+      result['rank'] as int,
+    );
+    await preferences.setString(
+      horoscopeEmojiPreferenceKey,
+      result['emoji'] as String,
+    );
+  }
+
+  Future<Map<String, dynamic>?> _loadSavedDailyHoroscope() async {
+    final preferences = await SharedPreferences.getInstance();
+    final savedDate = preferences.getString(horoscopeDatePreferenceKey);
+    final savedZodiacKey = preferences.getString(horoscopeZodiacPreferenceKey);
+
+    if (savedDate != _todayString() || savedZodiacKey != widget.zodiacKey) {
+      return null;
+    }
+
+    final savedMessage = preferences.getString(horoscopeMessagePreferenceKey);
+    final savedScore = preferences.getInt(horoscopeScorePreferenceKey);
+    final savedAction = preferences.getString(horoscopeActionPreferenceKey);
+    final savedRank = preferences.getInt(horoscopeRankPreferenceKey);
+    final savedEmoji = preferences.getString(horoscopeEmojiPreferenceKey);
+
+    if (savedMessage == null ||
+        savedScore == null ||
+        savedAction == null ||
+        savedRank == null ||
+        savedEmoji == null) {
+      return null;
+    }
+
+    return <String, dynamic>{
+      'date': savedDate,
+      'zodiacKey': savedZodiacKey,
+      'message': savedMessage,
+      'score': savedScore,
+      'action': savedAction,
+      'rank': savedRank,
+      'emoji': savedEmoji,
+    };
+  }
+
+  Future<void> _loadOrCreateDailyHoroscope() async {
+    final savedResult = await _loadSavedDailyHoroscope();
+    final result = savedResult ?? _generateDailyHoroscope();
+
+    if (savedResult == null) {
+      await _saveDailyHoroscope(result);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
-      final zodiacItems = _currentZodiacItems;
-      int newIndex = random.nextInt(zodiacItems.length);
-
-      while (newIndex == currentIndex && zodiacItems.length > 1) {
-        newIndex = random.nextInt(zodiacItems.length);
-      }
-
-      currentIndex = newIndex;
+      _dailyHoroscopeResult = result;
     });
   }
 
@@ -409,6 +525,76 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('매일 오전 7시에 오하아사 알림을 보내드릴게요.'),
+      ),
+    );
+  }
+
+  Map<String, dynamic> get _currentDisplayResult =>
+      _dailyHoroscopeResult ?? _generateDailyHoroscope();
+
+  Future<Uint8List?> captureShareCard() async {
+    final capturedFile = await _screenshotController.capture(
+      delay: const Duration(milliseconds: 120),
+      pixelRatio: 3,
+    );
+    return capturedFile;
+  }
+
+  Future<File> _createShareCardFile(Uint8List bytes) async {
+    final directory = await getTemporaryDirectory();
+    final file = File(
+      '${directory.path}/morning_ohasa_share_${DateTime.now().millisecondsSinceEpoch}.png',
+    );
+    await file.writeAsBytes(bytes, flush: true);
+    return file;
+  }
+
+  Future<void> saveShareCard() async {
+    final bytes = await captureShareCard();
+    if (bytes == null || !mounted) {
+      return;
+    }
+
+    final result = await ImageGallerySaver.saveImage(
+      bytes,
+      quality: 100,
+      name: 'morning_ohasa_${DateTime.now().millisecondsSinceEpoch}',
+    );
+    final isSuccess =
+        result is Map && (result['isSuccess'] == true || result['filePath'] != null);
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isSuccess ? '이미지가 저장되었어요 📸' : '이미지 저장에 실패했어요',
+        ),
+      ),
+    );
+  }
+
+  Future<void> shareShareCardImage() async {
+    final bytes = await captureShareCard();
+    if (bytes == null) {
+      return;
+    }
+
+    final file = await _createShareCardFile(bytes);
+    await SharePlus.instance.share(
+      ShareParams(
+        files: <XFile>[XFile(file.path)],
+        text: '오늘의 오하아사 결과를 확인해봤어요 ✨',
+      ),
+    );
+  }
+
+  Future<void> shareAppLink() async {
+    await SharePlus.instance.share(
+      ShareParams(
+        text: '오늘의 오하아사 앱 구경하기 ✨ https://example.com/morning-ohasa',
       ),
     );
   }
@@ -503,9 +689,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final today = DateTime.now();
-    final zodiacItems = _currentZodiacItems;
-    final safeIndex = currentIndex.clamp(0, zodiacItems.length - 1);
-    final currentItem = zodiacItems[safeIndex];
+    final currentItem = _currentDisplayResult;
 
     return Scaffold(
       body: Container(
@@ -547,76 +731,78 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildHeader(today, currentItem['emoji'] as String),
-                    const SizedBox(height: 18),
-                    _buildRankCard(),
-                    const SizedBox(height: 22),
-                    _buildMessageCard(currentItem['message'] as String),
-                    const SizedBox(height: 18),
-                    Row(
+              child: LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(
-                          child: _buildScoreCard(currentItem['score'] as int),
+                        _buildHeader(today, currentItem['emoji'] as String),
+                        const SizedBox(height: 10),
+                        _buildRankCard(),
+                        const SizedBox(height: 10),
+                        _buildMessageCard(currentItem['message'] as String),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildScoreCard(currentItem['score'] as int),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildActionCard(
+                                currentItem['action'] as String,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: _buildActionCard(
-                            currentItem['action'] as String,
+                        const SizedBox(height: 10),
+                        _buildUtilityButtons(),
+                        const SizedBox(height: 10),
+                        OutlinedButton(
+                          onPressed: _scheduleMorningNotification,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            side: const BorderSide(
+                              color: _cardBorder,
+                              width: 1.4,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            backgroundColor: Colors.white.withValues(alpha: 0.72),
+                          ),
+                          child: const Text(
+                            '아침 알림 켜기',
+                            style: TextStyle(
+                              color: Color(0xFF6A4FE0),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed: updateOhasa,
-                      style: ElevatedButton.styleFrom(
-                        elevation: 0,
-                        shadowColor: Colors.transparent,
-                        backgroundColor: _sunrise,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 19),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                      ),
-                      child: const Text(
-                        '다시 뽑기',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    OutlinedButton(
-                      onPressed: _scheduleMorningNotification,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 19),
-                        side: const BorderSide(
-                          color: _cardBorder,
-                          width: 1.4,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                        backgroundColor: Colors.white.withValues(alpha: 0.72),
-                      ),
-                      child: const Text(
-                        '아침 알림 켜기',
-                        style: TextStyle(
-                          color: Color(0xFF6A4FE0),
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
+                  );
+                ),
+              ),
+            ),
+            Positioned(
+              left: -9999,
+              top: 0,
+              child: Screenshot(
+                controller: _screenshotController,
+                child: Material(
+                  color: Colors.transparent,
+                  child: ShareCard(
+                    zodiacName: _currentZodiac.nameKo,
+                    zodiacEmoji: _currentZodiac.emoji,
+                    rank: (currentItem['rank'] as int?) ?? _currentZodiacRank,
+                    message: currentItem['message'] as String,
+                    score: currentItem['score'] as int,
+                    action: currentItem['action'] as String,
+                  ),
                 ),
               ),
             ),
@@ -628,7 +814,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildHeader(DateTime today, String emoji) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 22, 22, 22),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -638,7 +824,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Color(0xFFF2ECFF),
           ],
         ),
-        borderRadius: BorderRadius.circular(32),
+        borderRadius: BorderRadius.circular(28),
         border: Border.all(
           color: _cardBorder.withValues(alpha: 0.95),
         ),
@@ -655,7 +841,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Container(
             width: 72,
-            height: 72,
+            height: 64,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: LinearGradient(
@@ -669,20 +855,15 @@ class _HomeScreenState extends State<HomeScreen> {
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x227C5CFA),
-                  blurRadius: 22,
-                  offset: Offset(0, 10),
+                  blurRadius: 18,
+                  offset: Offset(0, 8),
                 ),
               ],
             ),
             alignment: Alignment.center,
-            child: Center(
-              child: Text(
-                emoji,
-                style: const TextStyle(fontSize: 32),
-              ),
-            ),
+            child: Center(child: _buildSafeSymbol(emoji, size: 28)),
           ),
-          const SizedBox(width: 18),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -690,45 +871,56 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.72),
                     borderRadius: BorderRadius.circular(999),
                   ),
-                  child: Text(
-                    '${_currentZodiac.emoji} ${_currentZodiac.nameKo}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF6E57C8),
-                      letterSpacing: 0.3,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildZodiacIcon(
+                        widget.zodiacKey,
+                        size: 13,
+                        color: const Color(0xFF6E57C8),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _currentZodiac.nameKo,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF6E57C8),
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 const Text(
                   '오늘의 오하아사',
                   style: TextStyle(
-                    fontSize: 26,
+                    fontSize: 23,
                     fontWeight: FontWeight.w900,
                     color: _textPrimary,
                     height: 1.05,
                     letterSpacing: -0.6,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Text(
                       '${today.year}.${today.month}.${today.day}',
                       style: const TextStyle(
-                        fontSize: 15,
+                        fontSize: 13,
                         color: _textSecondary,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.1,
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     TextButton(
                       onPressed: _changeZodiac,
                       style: TextButton.styleFrom(
@@ -740,7 +932,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: const Text(
                         '별자리 변경',
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -756,10 +948,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildRankCard() {
+    final displayedRank =
+        (_dailyHoroscopeResult?['rank'] as int?) ?? _currentZodiacRank;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(_cardRadius),
+        borderRadius: BorderRadius.circular(22),
         onTap: _showRankingsSheet,
         child: Ink(
           decoration: BoxDecoration(
@@ -771,60 +966,56 @@ class _HomeScreenState extends State<HomeScreen> {
                 Color(0xFFF2ECFF),
               ],
             ),
-            borderRadius: BorderRadius.circular(_cardRadius),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: _cardBorder.withValues(alpha: 0.92),
             ),
             boxShadow: _cardShadow,
           ),
           child: Padding(
-            padding: _cardPadding,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.fromLTRB(16, 12, 14, 12),
+            child: Row(
               children: [
-                const Text(
-                  '오늘의 오하아사 순위',
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: _textSecondary,
-                    fontWeight: FontWeight.w700,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _peach.withValues(alpha: 0.76),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    '오늘의 오하아사 순위',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: _textSecondary,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: _peach.withValues(alpha: 0.72),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        _currentZodiac.emoji,
-                        style: const TextStyle(fontSize: 22),
-                      ),
+                const SizedBox(width: 10),
+                _buildZodiacIcon(
+                  widget.zodiacKey,
+                  size: 20,
+                  color: _sunrise,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${_currentZodiac.nameKo} 오늘 $displayedRank위',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: _textPrimary,
+                      letterSpacing: -0.3,
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Text(
-                        '${_currentZodiac.nameKo} 오늘 $_currentZodiacRank위',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: _textPrimary,
-                          letterSpacing: -0.4,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: _textSecondary,
-                      size: 24,
-                    ),
-                  ],
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: _textSecondary,
+                  size: 22,
                 ),
               ],
             ),
@@ -881,9 +1072,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(width: 14),
-          Text(
-            zodiac.emoji,
-            style: const TextStyle(fontSize: 24),
+          _buildZodiacIcon(
+            zodiacKey,
+            size: 22,
+            color: isCurrent ? _sunrise : _textSecondary,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -920,7 +1112,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMessageCard(String message) {
     return Container(
-      padding: _cardPadding,
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -939,7 +1131,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: _peach.withValues(alpha: 0.58),
               borderRadius: BorderRadius.circular(999),
@@ -947,19 +1139,19 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Text(
               '오늘의 한마디',
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 13,
                 color: Color(0xFF6A4FE0),
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
           Text(
             message,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              fontSize: 25,
-              height: 1.5,
+              fontSize: 22,
+              height: 1.38,
               fontWeight: FontWeight.w700,
               color: _textPrimary,
               letterSpacing: -0.5,
@@ -972,7 +1164,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildScoreCard(int score) {
     return Container(
-      padding: _cardPadding,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -993,15 +1185,15 @@ class _HomeScreenState extends State<HomeScreen> {
           const Text(
             '오늘 점수',
             style: TextStyle(
-              fontSize: 15,
+              fontSize: 14,
               color: _textSecondary,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 13),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
@@ -1011,7 +1203,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const Color(0xFFF1E9FF),
                 ],
               ),
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.7),
               ),
@@ -1026,14 +1218,14 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               children: [
                 Container(
-                  width: 48,
-                  height: 6,
+                  width: 42,
+                  height: 5,
                   decoration: BoxDecoration(
                     color: _peach.withValues(alpha: 0.82),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 10),
                 ShaderMask(
                   shaderCallback: (bounds) => const LinearGradient(
                     begin: Alignment.topCenter,
@@ -1046,7 +1238,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Text(
                     '$score',
                     style: const TextStyle(
-                      fontSize: 40,
+                      fontSize: 34,
                       fontWeight: FontWeight.w900,
                       color: Colors.white,
                       height: 1,
@@ -1064,7 +1256,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildActionCard(String action) {
     return Container(
-      padding: _cardPadding,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -1085,32 +1277,32 @@ class _HomeScreenState extends State<HomeScreen> {
           const Text(
             '추천 행동',
             style: TextStyle(
-              fontSize: 15,
+              fontSize: 14,
               color: _textSecondary,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Container(
-            width: 52,
-            height: 52,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               color: _peach.withValues(alpha: 0.58),
               shape: BoxShape.circle,
             ),
             child: const Icon(
               Icons.wb_sunny_rounded,
-              size: 28,
+              size: 24,
               color: _sunrise,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
             action,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              fontSize: 17,
-              height: 1.45,
+              fontSize: 15,
+              height: 1.3,
               fontWeight: FontWeight.w700,
               color: _textPrimary,
               letterSpacing: -0.2,
@@ -1118,6 +1310,161 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildUtilityButtons() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _buildUtilityButton(
+          icon: Icons.download_rounded,
+          tooltip: '이미지 저장',
+          onTap: saveShareCard,
+        ),
+        _buildUtilityButton(
+          icon: null,
+          tooltip: '공유하기',
+          onTap: shareShareCardImage,
+          isHighlighted: true,
+        ),
+        _buildUtilityButton(
+          icon: Icons.link_rounded,
+          tooltip: '링크 공유',
+          onTap: shareAppLink,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUtilityButton({
+    IconData? icon,
+    required String tooltip,
+    required Future<void> Function() onTap,
+    bool isHighlighted = false,
+    Widget? child,
+  }) {
+    final backgroundColor =
+        isHighlighted ? const Color(0xFFFFF4FB) : const Color(0xFFFCF7FF);
+    final borderColor =
+        isHighlighted ? const Color(0xFFFFB7DE) : const Color(0xFFE6D8FF);
+    final iconColor = isHighlighted ? const Color(0xFFE35FA8) : _sunrise;
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: borderColor,
+                width: isHighlighted ? 1.6 : 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color:
+                      isHighlighted
+                          ? const Color(0x18E35FA8)
+                          : const Color(0x12000000),
+                  blurRadius: isHighlighted ? 16 : 14,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child:
+                child ??
+                (icon != null
+                    ? Icon(
+                      icon,
+                      color: iconColor,
+                      size: 24,
+                    )
+                    : Text(
+                      'X',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: iconColor,
+                        height: 1,
+                      ),
+                    )),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSafeSymbol(String symbol, {double size = 24}) {
+    const iconMap = <String, IconData>{
+      '🔥': Icons.local_fire_department_rounded,
+      '🚀': Icons.rocket_launch_rounded,
+      '🌿': Icons.spa_rounded,
+      '🍃': Icons.eco_rounded,
+      '💬': Icons.chat_bubble_rounded,
+      '🌤️': Icons.wb_cloudy_rounded,
+      '🌙': Icons.nightlight_round,
+      '🫧': Icons.bubble_chart_rounded,
+      '🦁': Icons.pets_rounded,
+      '📝': Icons.edit_note_rounded,
+      '⚖️': Icons.balance_rounded,
+      '🌸': Icons.local_florist_rounded,
+      '🦂': Icons.bug_report_rounded,
+      '🌌': Icons.auto_awesome_rounded,
+      '🏹': Icons.gps_fixed_rounded,
+      '🌍': Icons.public_rounded,
+      '⛰️': Icons.terrain_rounded,
+      '🪨': Icons.landscape_rounded,
+      '💡': Icons.lightbulb_rounded,
+      '🌊': Icons.water_rounded,
+      '🐟': Icons.set_meal_rounded,
+      '☀️': Icons.wb_sunny_rounded,
+      '✨': Icons.auto_awesome_rounded,
+      '🎵': Icons.music_note_rounded,
+      '🌼': Icons.local_florist_rounded,
+    };
+
+    final icon = iconMap[symbol];
+    if (icon != null) {
+      return Icon(icon, size: size, color: Colors.white);
+    }
+
+    return Text(
+      symbol,
+      style: TextStyle(fontSize: size, color: Colors.white, height: 1),
+    );
+  }
+
+  Widget _buildZodiacIcon(
+    String zodiacKey, {
+    required double size,
+    required Color color,
+  }) {
+    const iconMap = <String, IconData>{
+      'aries': Icons.wb_sunny_rounded,
+      'taurus': Icons.spa_rounded,
+      'gemini': Icons.auto_awesome_rounded,
+      'cancer': Icons.nightlight_round,
+      'leo': Icons.star_rounded,
+      'virgo': Icons.task_alt_rounded,
+      'libra': Icons.balance_rounded,
+      'scorpio': Icons.bolt_rounded,
+      'sagittarius': Icons.explore_rounded,
+      'capricorn': Icons.terrain_rounded,
+      'aquarius': Icons.water_drop_rounded,
+      'pisces': Icons.water_rounded,
+    };
+
+    return Icon(
+      iconMap[zodiacKey] ?? Icons.auto_awesome_rounded,
+      size: size,
+      color: color,
     );
   }
 }
