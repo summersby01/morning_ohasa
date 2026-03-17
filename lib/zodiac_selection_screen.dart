@@ -7,10 +7,10 @@ class ZodiacSelectionScreen extends StatelessWidget {
   const ZodiacSelectionScreen({super.key});
 
   static const Color _background = Color(0xFFF9F4FF);
-  static const Color _cardBackground = Colors.white;
   static const Color _textPrimary = Color(0xFF33254F);
   static const Color _textSecondary = Color(0xFF7B6D9B);
   static const Color _softAccent = Color(0xFFECE3FF);
+  static const Color _blush = Color(0xFFFFE2F4);
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +39,14 @@ class ZodiacSelectionScreen extends StatelessWidget {
                   width: 72,
                   height: 72,
                   decoration: BoxDecoration(
-                    color: _softAccent,
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[
+                        _softAccent,
+                        _blush,
+                      ],
+                    ),
                     shape: BoxShape.circle,
                     boxShadow: const [
                       BoxShadow(
@@ -50,9 +57,10 @@ class ZodiacSelectionScreen extends StatelessWidget {
                     ],
                   ),
                   alignment: Alignment.center,
-                  child: const Text(
-                    '✨',
-                    style: TextStyle(fontSize: 30),
+                  child: const Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 30,
+                    color: Color(0xFF8C7BFF),
                   ),
                 ),
                 const SizedBox(height: 22),
@@ -114,8 +122,18 @@ class ZodiacSelectionScreen extends StatelessWidget {
                           },
                           child: Ink(
                             decoration: BoxDecoration(
-                              color: _cardBackground,
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: <Color>[
+                                  Color(0xFFFFFCFF),
+                                  Color(0xFFF4ECFF),
+                                ],
+                              ),
                               borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: const Color(0xFFEAD9FF),
+                              ),
                               boxShadow: const [
                                 BoxShadow(
                                   color: Color(0x14000000),
@@ -127,9 +145,25 @@ class ZodiacSelectionScreen extends StatelessWidget {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(
-                                  meta.emoji,
-                                  style: const TextStyle(fontSize: 30),
+                                Container(
+                                  width: 52,
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: <Color>[
+                                        Color(0xFFE8DDFF),
+                                        Color(0xFFFFE7F6),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  child: Icon(
+                                    zodiacIconData(entry.key),
+                                    size: 28,
+                                    color: const Color(0xFF8C7BFF),
+                                  ),
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
@@ -140,6 +174,15 @@ class ZodiacSelectionScreen extends StatelessWidget {
                                     fontWeight: FontWeight.w700,
                                     color: _textPrimary,
                                     letterSpacing: -0.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _zodiacSubtitle(entry.key),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: _textSecondary,
                                   ),
                                 ),
                               ],
@@ -156,5 +199,36 @@ class ZodiacSelectionScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static String _zodiacSubtitle(String zodiacKey) {
+    switch (zodiacKey) {
+      case 'aries':
+        return 'sun vibe';
+      case 'taurus':
+        return 'calm mood';
+      case 'gemini':
+        return 'spark talk';
+      case 'cancer':
+        return 'night glow';
+      case 'leo':
+        return 'star power';
+      case 'virgo':
+        return 'soft plan';
+      case 'libra':
+        return 'balance day';
+      case 'scorpio':
+        return 'bold pulse';
+      case 'sagittarius':
+        return 'free path';
+      case 'capricorn':
+        return 'steady rise';
+      case 'aquarius':
+        return 'fresh wave';
+      case 'pisces':
+        return 'dream flow';
+      default:
+        return 'daily mood';
+    }
   }
 }
