@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
@@ -480,7 +482,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   static const double _cardRadius = 30;
 
-  final ScreenshotController _screenshotController = ScreenshotController();
+  final GlobalKey _visibleCaptureKey = GlobalKey();
+  final ScreenshotController _shareCardScreenshotController =
+      ScreenshotController();
   Map<String, dynamic>? _dailyHoroscopeResult;
   String _selectedThemeKey = 'lavenderPink';
   String _selectedLanguageCode = 'ko';
@@ -838,15 +842,27 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic> get _currentDisplayResult =>
       _dailyHoroscopeResult ?? _generateDailyHoroscope();
 
-  Future<Uint8List?> captureShareCard() async {
-    final capturedFile = await _screenshotController.capture(
+  Future<Uint8List?> _captureVisibleContent() async {
+    final boundary = _visibleCaptureKey.currentContext?.findRenderObject()
+        as RenderRepaintBoundary?;
+    if (boundary == null) {
+      return null;
+    }
+
+    final image = await boundary.toImage(pixelRatio: 3);
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData?.buffer.asUint8List();
+  }
+
+  Future<Uint8List?> _captureShareCardImage() async {
+    final capturedFile = await _shareCardScreenshotController.capture(
       delay: const Duration(milliseconds: 120),
       pixelRatio: 3,
     );
     return capturedFile;
   }
 
-  Future<File> _createShareCardFile(Uint8List bytes) async {
+  Future<File> _createCapturedImageFile(Uint8List bytes) async {
     final directory = await getTemporaryDirectory();
     final file = File(
       '${directory.path}/morning_ohasa_share_${DateTime.now().millisecondsSinceEpoch}.png',
@@ -855,8 +871,17 @@ class _HomeScreenState extends State<HomeScreen> {
     return file;
   }
 
-  Future<void> saveShareCard() async {
-    final bytes = await captureShareCard();
+  Rect? _shareOriginRect() {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      return null;
+    }
+
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  Future<void> saveCurrentScreenImage() async {
+    final bytes = await _captureVisibleContent();
     if (bytes == null || !mounted) {
       return;
     }
@@ -884,33 +909,98 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> shareShareCardImage() async {
-    final bytes = await captureShareCard();
-    if (bytes == null) {
-      return;
+  Future<void> shareWithShareCard() async {
+    debugPrint('shareWithShareCard tapped');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          duration: const Duration(milliseconds: 900),
+          content: Text(
+            _tr('공유 시트를 여는 중이에요...', 'Opening share sheet...'),
+          ),
+        ),
+      );
     }
 
-    final file = await _createShareCardFile(bytes);
-    await SharePlus.instance.share(
-      ShareParams(
-        files: <XFile>[XFile(file.path)],
-        text: _tr(
-          '오늘의 오하아사 결과를 확인해봤어요 ✨',
-          'I checked my Morning Ohasa result today ✨',
+    try {
+      final bytes = await _captureShareCardImage();
+      if (bytes == null) {
+        debugPrint('shareWithShareCard: capture returned null');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                _tr('공유 이미지를 만들지 못했어요.', 'Could not create share image.'),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      final file = await _createCapturedImageFile(bytes);
+      debugPrint('shareWithShareCard: sharing file ${file.path}');
+      await SharePlus.instance.share(
+        ShareParams(
+          files: <XFile>[XFile(file.path)],
+          text: _tr(
+            '오늘의 오하아사 결과를 확인해봤어요 ✨',
+            'I checked my Morning Ohasa result today ✨',
+          ),
+          sharePositionOrigin: _shareOriginRect(),
         ),
-      ),
-    );
+      );
+    } catch (error, stackTrace) {
+      debugPrint('shareWithShareCard error: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _tr('공유를 열지 못했어요.', 'Could not open share sheet.'),
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> shareAppLink() async {
-    await SharePlus.instance.share(
-      ShareParams(
-        text: _tr(
-          '오늘의 오하아사 앱 구경하기 ✨ https://example.com/morning-ohasa',
-          'Take a look at the Morning Ohasa app ✨ https://example.com/morning-ohasa',
+    debugPrint('shareAppLink tapped');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          duration: const Duration(milliseconds: 900),
+          content: Text(
+            _tr('링크 공유를 여는 중이에요...', 'Opening link share...'),
+          ),
         ),
-      ),
-    );
+      );
+    }
+
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          text: _tr(
+            '오늘의 오하아사 앱 구경하기 ✨ https://example.com/morning-ohasa',
+            'Take a look at the Morning Ohasa app ✨ https://example.com/morning-ohasa',
+          ),
+          sharePositionOrigin: _shareOriginRect(),
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('shareAppLink error: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _tr('링크 공유를 열지 못했어요.', 'Could not open link share.'),
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _changeZodiacFromSettings(String zodiacKey) async {
@@ -2060,15 +2150,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   final framedContent = Padding(
                     padding: const EdgeInsets.fromLTRB(16, 34, 16, 8),
-                    child:
-                        kIsWeb
-                            ? Center(
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 460),
-                                child: content,
-                              ),
-                            )
-                            : content,
+                    child: RepaintBoundary(
+                      key: _visibleCaptureKey,
+                      child:
+                          kIsWeb
+                              ? Center(
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 460),
+                                  child: content,
+                                ),
+                              )
+                              : content,
+                    ),
                   );
 
                   return Column(
@@ -2085,16 +2178,22 @@ class _HomeScreenState extends State<HomeScreen> {
               left: -9999,
               top: 0,
               child: Screenshot(
-                controller: _screenshotController,
+                controller: _shareCardScreenshotController,
                 child: Material(
                   color: Colors.transparent,
                   child: ShareCard(
                     zodiacName: _currentZodiac.nameKo,
-                    zodiacEmoji: _currentZodiac.emoji,
+                    zodiacIcon: zodiacIconData(widget.zodiacKey),
                     rank: (currentItem['rank'] as int?) ?? _currentZodiacRank,
                     message: currentItem['message'] as String,
                     score: currentItem['score'] as int,
                     action: currentItem['action'] as String,
+                    backgroundStart: _cardStart,
+                    backgroundEnd: _cardEnd,
+                    accent: _accent,
+                    accentSoft: _accentSoft,
+                    textPrimary: _textPrimary,
+                    textSecondary: _textSecondary,
                   ),
                 ),
               ),
@@ -2879,13 +2978,13 @@ class _HomeScreenState extends State<HomeScreen> {
         _buildUtilityButton(
           icon: Icons.download_rounded,
           tooltip: _tr('이미지 저장', 'Save Image'),
-          onTap: saveShareCard,
+          onTap: saveCurrentScreenImage,
           accent: _sky,
         ),
         _buildUtilityButton(
           icon: null,
           tooltip: _tr('공유하기', 'Share to X'),
-          onTap: shareShareCardImage,
+          onTap: shareWithShareCard,
           accent: _blush,
         ),
         _buildUtilityButton(
