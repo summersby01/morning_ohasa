@@ -948,7 +948,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<String> _messageCandidatesForCurrentZodiac() {
     final currentMessage =
-        _normalizeDisplayText(_interactiveMessageOverride ?? _currentDisplayResult['message']);
+        _normalizeDisplayText(
+          _interactiveMessageOverride ?? _currentDisplayResult['rawMessage'],
+        );
     final candidates = <String>[
       ...todayMessages,
       ...(zodiacSpecificMessages[widget.zodiacKey] ?? const <String>[]),
@@ -964,7 +966,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _showAlternateTodayMessage() async {
     final candidates = _messageCandidatesForCurrentZodiac();
     final currentMessage =
-        _normalizeDisplayText(_interactiveMessageOverride ?? _currentDisplayResult['message']);
+        _normalizeDisplayText(
+          _interactiveMessageOverride ?? _currentDisplayResult['rawMessage'],
+        );
     final alternatives = candidates
         .where((String item) => item.isNotEmpty && item != currentMessage)
         .toList();
@@ -997,7 +1001,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _copyCurrentMessage() async {
     final currentMessage =
-        _normalizeDisplayText(_interactiveMessageOverride ?? _currentDisplayResult['message']);
+        _normalizeDisplayText(_currentDisplayResult['message']);
     await Clipboard.setData(ClipboardData(text: currentMessage));
     _showDelightSnackBar(
       '복사됨. 마음에 들면 저장해둬',
@@ -1093,6 +1097,245 @@ class _HomeScreenState extends State<HomeScreen> {
         .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
         .replaceAll(RegExp(r'\n{3,}'), '\n\n')
         .trim();
+  }
+
+  String _fallbackKoreanMessageText() {
+    final candidate = _normalizeDisplayText(_pickDailyMessage());
+    return candidate.isEmpty ? '오늘은 무리하지 않고 내 페이스로 가도 좋아' : candidate;
+  }
+
+  String _fallbackKoreanActionText() {
+    final candidate = _normalizeDisplayText(_pickDailyAction());
+    return candidate.isEmpty ? '물 한 잔 마시기' : candidate;
+  }
+
+  String _sanitizeMessageForKoreanDisplay(
+    dynamic localizedText, {
+    dynamic originalText,
+  }) {
+    final localized = _normalizeDisplayText(localizedText);
+    final original = _normalizeDisplayText(originalText);
+
+    if (localized.isNotEmpty &&
+        !_containsJapanese(localized) &&
+        localized != original) {
+      return localized;
+    }
+
+    debugPrint(
+      '[translation-audit] message sanitized to Korean fallback | '
+      'localized="$localized" | original="$original"',
+    );
+    return _fallbackKoreanMessageText();
+  }
+
+  String _sanitizeActionForKoreanDisplay(
+    dynamic localizedText, {
+    dynamic originalText,
+  }) {
+    final localized = _normalizeDisplayText(localizedText);
+    final original = _normalizeDisplayText(originalText);
+
+    if (localized.isNotEmpty &&
+        !_containsJapanese(localized) &&
+        localized != original) {
+      return localized;
+    }
+
+    debugPrint(
+      '[translation-audit] action sanitized to Korean fallback | '
+      'localized="$localized" | original="$original"',
+    );
+    return _formatActionForDisplay(_fallbackKoreanActionText());
+  }
+
+  String _normalizeSourceText(dynamic text) {
+    return _normalizeDisplayText(text)
+        .replaceAll('◎', '좋음')
+        .replaceAll('○', '무난')
+        .replaceAll('△', '주의')
+        .replaceAll('×', '주의')
+        .replaceAll('♪', '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  Set<String> _extractMeaningTags({
+    required String rawMessage,
+    required String rawAction,
+  }) {
+    final source = '${_normalizeSourceText(rawMessage)} ${_normalizeSourceText(rawAction)}';
+    final tags = <String>{};
+
+    void addTagIfMatches(String tag, List<String> keywords) {
+      if (keywords.any(source.contains)) {
+        tags.add(tag);
+      }
+    }
+
+    addTagIfMatches('social', <String>[
+      '대화', '연락', '답장', '사람', '인기', '듣', '말', '소통',
+      '会話', '連絡', '人気', '聞き上手',
+    ]);
+    addTagIfMatches('saving', <String>[
+      '절약', '지출', '금전', '통신비', '돈', '가계부',
+      '節約', '金運', '通信費',
+    ]);
+    addTagIfMatches('rest', <String>[
+      '휴식', '회복', '느긋', '천천히', '컨디션', '쉬',
+      '休', 'リフレッシュ', '気楽',
+    ]);
+    addTagIfMatches('outing', <String>[
+      '산책', '드라이브', '외출', '햇빛', '공기', '나가',
+      '散歩', 'ドライブ', '外', 'テーマパーク',
+    ]);
+    addTagIfMatches('focus', <String>[
+      '집중', '정리', '확인', '체크', '루틴', '마무리', '우선순위',
+      '集中', '確認', '効率', '作業',
+    ]);
+    addTagIfMatches('caution', <String>[
+      '주의', '실수', '조심', '흔들', '과로', '무리',
+      '注意', 'ミス', '振り回', '気をつけ',
+    ]);
+    addTagIfMatches('good_flow', <String>[
+      '좋', '기회', '흐름', '잘 풀', '찬스', '무난',
+      'チャンス', '広がる', '順調',
+    ]);
+    addTagIfMatches('home', <String>[
+      '집', '방', '책상', '정리', '꽃', '환기',
+      '部屋', '花', 'レジ',
+    ]);
+    addTagIfMatches('food', <String>[
+      '먹', '간식', '물', '차', '닭', '해조',
+      '食べ', 'ひじき', '鶏肉',
+    ]);
+
+    return tags;
+  }
+
+  String _generateTodayMessageText({
+    required Set<String> tags,
+    required int rank,
+    required int score,
+  }) {
+    if (rank <= 3 || score >= 90) {
+      if (tags.contains('social')) {
+        return '가볍게 건넨 말도\n좋은 흐름으로 이어질 수 있어';
+      }
+      if (tags.contains('good_flow')) {
+        return '오늘은 흐름이 꽤 좋아.\n하고 싶던 걸 꺼내봐도 괜찮아';
+      }
+      return '기분 좋은 장면이\n생각보다 쉽게 열릴 수 있어';
+    }
+
+    if (tags.contains('caution')) {
+      return '조금만 천천히 가도 돼.\n서두르지 않으면 더 깔끔해져';
+    }
+    if (tags.contains('focus')) {
+      return '하나만 또렷하게 잡아도\n오늘 무드는 충분히 좋아져';
+    }
+    if (tags.contains('saving')) {
+      return '사소한 선택 하나가\n오늘 컨디션을 더 가볍게 해줘';
+    }
+    if (tags.contains('rest')) {
+      return '억지로 끌어올리지 않아도 괜찮아.\n내 리듬을 믿어봐';
+    }
+    if (rank >= 9 || score < 74) {
+      return '오늘은 무리하지 않는 쪽이 좋아.\n페이스만 지켜도 충분해';
+    }
+    return '잔잔하지만 괜찮은 흐름이야.\n작은 선택이 분위기를 바꿔줄 수 있어';
+  }
+
+  String _generateActionLabel({
+    required Set<String> tags,
+  }) {
+    if (tags.contains('saving')) {
+      return '지출 한 번만 체크하기';
+    }
+    if (tags.contains('social')) {
+      return '미뤄둔 답장 보내기';
+    }
+    if (tags.contains('rest')) {
+      return '잠깐 숨 고르기';
+    }
+    if (tags.contains('outing')) {
+      return '가볍게 바람 쐬기';
+    }
+    if (tags.contains('focus')) {
+      return '중요한 일 하나만 끝내기';
+    }
+    if (tags.contains('home')) {
+      return '책상 한 곳만 정리하기';
+    }
+    if (tags.contains('food')) {
+      return '물 먼저 챙기기';
+    }
+    if (tags.contains('caution')) {
+      return '서두르지 말고 한 번 더 보기';
+    }
+    return '오늘 페이스 먼저 챙기기';
+  }
+
+  String _generateResultInsightText({
+    required Set<String> tags,
+    required int rank,
+    required int score,
+  }) {
+    if (rank <= 3 || score >= 90) {
+      return '전체 흐름은 꽤 좋은 편이야.\n가볍게 밀어붙여도 괜찮아';
+    }
+    if (tags.contains('saving')) {
+      return '무난한 흐름이지만\n지출은 조금 신경 쓰는 편이 좋아';
+    }
+    if (tags.contains('caution')) {
+      return '기세보다 조절감이 중요해.\n사소한 실수만 줄이면 충분해';
+    }
+    if (tags.contains('rest')) {
+      return '오늘은 회복 쪽에 점수를 줘도 좋아.\n리듬만 지켜도 괜찮아';
+    }
+    if (tags.contains('focus')) {
+      return '한 가지에 집중할수록\n체감이 더 좋아질 수 있어';
+    }
+    if (rank >= 9 || score < 74) {
+      return '조금 잔잔한 날이야.\n무리하지 않으면 흐름은 지켜져';
+    }
+    return '전반적으론 무난한 편이야.\n작은 선택이 결과를 더 예쁘게 만들어줘';
+  }
+
+  Map<String, String> _buildDisplayCopy({
+    required dynamic rawMessage,
+    required dynamic rawAction,
+    required int rank,
+    required int score,
+  }) {
+    final safeRawMessage = _sanitizeMessageForKoreanDisplay(rawMessage);
+    final safeRawAction = _sanitizeActionForKoreanDisplay(rawAction);
+    final tags = _extractMeaningTags(
+      rawMessage: safeRawMessage,
+      rawAction: safeRawAction,
+    );
+
+    return <String, String>{
+      'rawMessage': safeRawMessage,
+      'rawAction': safeRawAction,
+      'message': _formatTodayMessageForDisplay(
+        _generateTodayMessageText(
+          tags: tags,
+          rank: rank,
+          score: score,
+        ),
+      ),
+      'action': _formatActionForDisplay(
+        _generateActionLabel(tags: tags),
+      ),
+      'insight': _formatTodayMessageForDisplay(
+        _generateResultInsightText(
+          tags: tags,
+          rank: rank,
+          score: score,
+        ),
+      ),
+    };
   }
 
   List<String> _splitDisplayTextIntoChunks(
@@ -1374,23 +1617,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (localized.isEmpty) {
       debugPrint(
-        '[translation-audit] $localizedField missing, falling back to original',
+        '[translation-audit] $localizedField missing',
       );
-      return original.isEmpty ? null : original;
+      return null;
     }
 
     if (_containsJapanese(localized)) {
       debugPrint(
-        '[translation-audit] $localizedField contains Japanese, falling back to original',
+        '[translation-audit] $localizedField contains Japanese',
       );
-      return original.isEmpty ? null : original;
+      return null;
     }
 
     if (original.isNotEmpty && localized == original) {
       debugPrint(
-        '[translation-audit] $localizedField equals original, falling back to original',
+        '[translation-audit] $localizedField equals original',
       );
-      return original;
+      return null;
     }
 
     return localized;
@@ -1440,28 +1683,22 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       final remoteEntry = remoteRankings[widget.zodiacKey];
-      final message = _isEnglish
-          ? _resolveRemoteLocalizedText(
-              remoteEntry: remoteEntry,
-              localizedField: 'messageEn',
-              originalField: 'messageJa',
-            )
-          : _resolveRemoteLocalizedText(
-              remoteEntry: remoteEntry,
-              localizedField: 'messageKo',
-              originalField: 'messageJa',
-            );
-      final action = _isEnglish
-          ? _resolveRemoteLocalizedText(
-              remoteEntry: remoteEntry,
-              localizedField: 'actionEn',
-              originalField: 'actionJa',
-            )
-          : _resolveRemoteLocalizedText(
-              remoteEntry: remoteEntry,
-              localizedField: 'actionKo',
-              originalField: 'actionJa',
-            );
+      final message = _sanitizeMessageForKoreanDisplay(
+        _resolveRemoteLocalizedText(
+          remoteEntry: remoteEntry,
+          localizedField: 'messageKo',
+          originalField: 'messageJa',
+        ),
+        originalText: remoteEntry?['messageJa'],
+      );
+      final action = _sanitizeActionForKoreanDisplay(
+        _resolveRemoteLocalizedText(
+          remoteEntry: remoteEntry,
+          localizedField: 'actionKo',
+          originalField: 'actionJa',
+        ),
+        originalText: remoteEntry?['actionJa'],
+      );
       final rank = remoteEntry?['rank'];
       final remoteDate = normalizeDailyDateKey(payload['date'] as String?);
       final result = <String, dynamic>{
@@ -1469,12 +1706,14 @@ class _HomeScreenState extends State<HomeScreen> {
         'date': remoteDate.isNotEmpty
             ? remoteDate
             : fallbackResult['date'],
-        'message': message is String && message.trim().isNotEmpty
-            ? message
-            : fallbackResult['message'],
-        'action': action is String && action.trim().isNotEmpty
-            ? action
-            : fallbackResult['action'],
+        'message': _sanitizeMessageForKoreanDisplay(
+          message,
+          originalText: remoteEntry?['messageJa'],
+        ),
+        'action': _sanitizeActionForKoreanDisplay(
+          action,
+          originalText: remoteEntry?['actionJa'],
+        ),
         'rank': rank is int ? rank : fallbackResult['rank'],
         'remoteRankings': remoteRankings,
       };
@@ -1488,8 +1727,8 @@ class _HomeScreenState extends State<HomeScreen> {
           'parsedDailyDate': result['date'],
           'remoteRankingsCount': remoteRankings.length,
           'remoteEntryFound': remoteEntry != null,
-          'usedRemoteMessage': message is String && message.trim().isNotEmpty,
-          'usedRemoteAction': action is String && action.trim().isNotEmpty,
+          'usedRemoteMessage': message.trim().isNotEmpty,
+          'usedRemoteAction': action.trim().isNotEmpty,
         },
       );
 
@@ -1504,40 +1743,47 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _saveDailyHoroscope(Map<String, dynamic> result) async {
+    final sanitizedMessage = _sanitizeMessageForKoreanDisplay(result['message']);
+    final sanitizedAction = _sanitizeActionForKoreanDisplay(result['action']);
+    final persistableResult = <String, dynamic>{
+      ...result,
+      'message': sanitizedMessage,
+      'action': sanitizedAction,
+    };
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(
       horoscopeDatePreferenceKey,
-      result['date'] as String,
+      persistableResult['date'] as String,
     );
     await preferences.setString(
       horoscopeZodiacPreferenceKey,
-      result['zodiacKey'] as String,
+      persistableResult['zodiacKey'] as String,
     );
     await preferences.setString(
       horoscopeMessagePreferenceKey,
-      result['message'] as String,
+      sanitizedMessage,
     );
     await preferences.setInt(
       horoscopeScorePreferenceKey,
-      result['score'] as int,
+      persistableResult['score'] as int,
     );
     await preferences.setString(
       horoscopeActionPreferenceKey,
-      result['action'] as String,
+      sanitizedAction,
     );
     await preferences.setInt(
       horoscopeRankPreferenceKey,
-      result['rank'] as int,
+      persistableResult['rank'] as int,
     );
     await preferences.setString(
       horoscopeEmojiPreferenceKey,
-      result['emoji'] as String,
+      persistableResult['emoji'] as String,
     );
     _logDailyResultAudit(
       'local_cache.saved',
-      result: result,
+      result: persistableResult,
       extra: <String, Object?>{
-        'cacheDate': result['date'],
+        'cacheDate': persistableResult['date'],
       },
     );
   }
@@ -1581,9 +1827,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final result = <String, dynamic>{
       'date': normalizeDailyDateKey(savedDate),
       'zodiacKey': savedZodiacKey,
-      'message': savedMessage,
+      'message': _sanitizeMessageForKoreanDisplay(savedMessage),
       'score': savedScore,
-      'action': savedAction,
+      'action': _sanitizeActionForKoreanDisplay(savedAction),
       'rank': savedRank,
       'emoji': savedEmoji,
     };
@@ -2026,20 +2272,26 @@ class _HomeScreenState extends State<HomeScreen> {
           'rank': _currentZodiacRank,
           'emoji': _currentZodiac.emoji,
         };
+    final resolvedRank = _currentZodiacRank;
+    final resolvedScore = (baseResult['score'] as int?) ?? 0;
+    final rawMessage = _interactiveMessageOverride ?? baseResult['message'];
+    final displayCopy = _buildDisplayCopy(
+      rawMessage: rawMessage,
+      rawAction: baseResult['action'],
+      rank: resolvedRank,
+      score: resolvedScore,
+    );
 
     final resolvedResult = <String, dynamic>{
       ...baseResult,
-      'rank': _currentZodiacRank,
+      'rawMessage': displayCopy['rawMessage'],
+      'rawAction': displayCopy['rawAction'],
+      'message': displayCopy['message'],
+      'action': displayCopy['action'],
+      'insight': displayCopy['insight'],
+      'rank': resolvedRank,
     };
-
-    if (_interactiveMessageOverride == null) {
-      return resolvedResult;
-    }
-
-    return <String, dynamic>{
-      ...resolvedResult,
-      'message': _interactiveMessageOverride,
-    };
+    return resolvedResult;
   }
 
   Future<Uint8List?> _captureVisibleContent() async {
@@ -4147,10 +4399,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildRankCard() {
     final displayedRank = _currentZodiacRank;
     final score = (_currentDisplayResult['score'] as int?) ?? 0;
-    final insight = _buildResultInsight(
-      rank: displayedRank,
-      score: score,
-    );
+    final insight =
+        (_currentDisplayResult['insight'] as String?) ??
+        _buildResultInsight(
+          rank: displayedRank,
+          score: score,
+        );
 
     return _PressableScale(
       borderRadius: BorderRadius.circular(18),
@@ -4372,8 +4626,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMessageCard(String message) {
-    final sourceMessage = _interactiveMessageOverride ?? message;
-    final displayMessage = _formatTodayMessageForDisplay(sourceMessage);
+    final displayMessage =
+        (_currentDisplayResult['message'] as String?) ??
+        _formatTodayMessageForDisplay(message);
 
     return _PressableScale(
       borderRadius: BorderRadius.circular(_cardRadius),
@@ -4626,7 +4881,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildActionCard(String action) {
-    final displayAction = _formatActionForDisplay(action);
+    final displayAction =
+        (_currentDisplayResult['action'] as String?) ??
+        _formatActionForDisplay(action);
 
     return Container(
       padding: const EdgeInsets.all(14),
