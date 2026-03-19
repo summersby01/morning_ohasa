@@ -1,4 +1,4 @@
-package com.example.morning_ohasa
+package com.morningohasa.app
 
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity

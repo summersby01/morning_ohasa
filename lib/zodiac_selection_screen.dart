@@ -50,9 +50,10 @@ class ZodiacSelectionScreen extends StatelessWidget {
                     shape: BoxShape.circle,
                     boxShadow: const [
                       BoxShadow(
-                        color: Color(0x14000000),
-                        blurRadius: 24,
-                        offset: Offset(0, 12),
+                        color: Color(0x40DCC8FF),
+                        blurRadius: 20,
+                        spreadRadius: 1,
+                        offset: Offset(0, 8),
                       ),
                     ],
                   ),
@@ -136,9 +137,10 @@ class ZodiacSelectionScreen extends StatelessWidget {
                               ),
                               boxShadow: const [
                                 BoxShadow(
-                                  color: Color(0x14000000),
-                                  blurRadius: 24,
-                                  offset: Offset(0, 12),
+                                  color: Color(0x3FD8C4FF),
+                                  blurRadius: 22,
+                                  spreadRadius: 1,
+                                  offset: Offset(0, 8),
                                 ),
                               ],
                             ),
