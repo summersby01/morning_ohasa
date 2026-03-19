@@ -3084,8 +3084,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       SizedBox(
-        height: 204,
+        height: 228,
         child: ListView.separated(
+          clipBehavior: Clip.none,
+          padding: const EdgeInsets.symmetric(vertical: 10),
           scrollDirection: Axis.horizontal,
           itemCount: appThemes.length,
           separatorBuilder: (BuildContext context, int index) =>
@@ -3117,7 +3119,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required Future<void> Function() onTap,
   }) {
     return AnimatedScale(
-      scale: isSelected ? 1.05 : 1,
+      scale: isSelected ? 1.02 : 1,
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       child: Material(
