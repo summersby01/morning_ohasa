@@ -3148,30 +3148,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               boxShadow: _softGlow(
                 theme.accent,
-                baseOpacity: isSelected ? 0.2 : 0.1,
+                baseOpacity: isSelected ? 0.14 : 0.06,
               ),
             ),
             child: Stack(
               children: [
-                Positioned(
-                  top: -14,
-                  left: 8,
-                  right: 8,
-                  child: Container(
-                    height: 26,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
-                      gradient: LinearGradient(
-                        colors: <Color>[
-                          Colors.white.withValues(
-                            alpha: theme.isDark ? 0.08 : 0.42,
-                          ),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
                 Positioned(
                   top: 18,
                   right: 16,
@@ -3225,10 +3206,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: Colors.white.withValues(
-                              alpha: theme.isDark ? 0.08 : 0.34,
+                              alpha: theme.isDark ? 0.06 : 0.18,
                             ),
                             border: Border.all(
-                              color: theme.accentSoft.withValues(alpha: 0.9),
+                              color: theme.accentSoft.withValues(alpha: 0.68),
                             ),
                           ),
                           child: Icon(
@@ -3251,23 +3232,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildThemePreviewDot(Color color, double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: color.withValues(alpha: 0.32),
-            blurRadius: 8,
-            spreadRadius: 0.5,
-          ),
-        ],
-      ),
-    );
-  }
+Widget _buildThemePreviewDot(Color color, double size) {
+  return Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: color,
+      shape: BoxShape.circle,
+      boxShadow: <BoxShadow>[
+        BoxShadow(
+          color: color.withValues(alpha: 0.16),
+          blurRadius: 4,
+          spreadRadius: 0.1,
+        ),
+      ],
+    ),
+  );
+}
 
   List<Widget> _buildLanguageSettingsContent() {
     return <Map<String, String>>[
@@ -4200,40 +4181,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Stack(
         children: [
-          Positioned(
-            left: -20,
-            bottom: -24,
-            child: Container(
-              width: 160,
-              height: 80,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
-                gradient: LinearGradient(
-                  colors: <Color>[
-                    _accentSoft.withValues(alpha: _isDarkTheme ? 0.12 : 0.28),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            right: -8,
-            bottom: -6,
-            child: Container(
-              width: 86,
-              height: 86,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: <Color>[
-                    _accent.withValues(alpha: _isDarkTheme ? 0.12 : 0.18),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
           ..._buildSparkleCluster(
             alignment: Alignment.topRight,
             scale: 1.0,
@@ -4423,23 +4370,6 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.fromLTRB(15, 12, 14, 12),
           child: Stack(
             children: [
-              Positioned(
-                top: -12,
-                left: 18,
-                right: 56,
-                child: Container(
-                  height: 22,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    gradient: LinearGradient(
-                      colors: <Color>[
-                        Colors.white.withValues(alpha: _isDarkTheme ? 0.04 : 0.34),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
               ..._buildSparkleCluster(
                 alignment: Alignment.centerRight,
                 scale: 0.8,
