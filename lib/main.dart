@@ -963,20 +963,62 @@ class _HomeScreenState extends State<HomeScreen> {
     return candidates;
   }
 
+  Map<String, String> _displayMessageOptionsForCurrentZodiac() {
+    final rawCandidates = _messageCandidatesForCurrentZodiac();
+    final rank = _currentZodiacRank;
+    final score = (_dailyHoroscopeResult?['score'] as int?) ?? 0;
+    final rawAction =
+        _currentDisplayResult['rawAction'] ?? _dailyHoroscopeResult?['action'] ?? '';
+    final options = <String, String>{};
+
+    for (final rawCandidate in rawCandidates) {
+      final displayMessage =
+          _buildDisplayCopy(
+            rawMessage: rawCandidate,
+            rawAction: rawAction,
+            rank: rank,
+            score: score,
+          )['message'] ??
+          '';
+
+      final normalizedDisplay = _normalizeDisplayText(displayMessage);
+      if (normalizedDisplay.isEmpty) {
+        continue;
+      }
+
+      options.putIfAbsent(normalizedDisplay, () => rawCandidate);
+    }
+
+    return options;
+  }
+
   Future<void> _showAlternateTodayMessage() async {
-    final candidates = _messageCandidatesForCurrentZodiac();
-    final currentMessage =
-        _normalizeDisplayText(
-          _interactiveMessageOverride ?? _currentDisplayResult['rawMessage'],
-        );
-    final alternatives = candidates
-        .where((String item) => item.isNotEmpty && item != currentMessage)
+    final currentRawMessage = _normalizeDisplayText(
+      _interactiveMessageOverride ?? _currentDisplayResult['rawMessage'],
+    );
+    final currentDisplayMessage = _normalizeDisplayText(
+      _currentDisplayResult['message'],
+    );
+    final rawCandidates = _messageCandidatesForCurrentZodiac();
+    final displayOptions = _displayMessageOptionsForCurrentZodiac();
+    final alternativeDisplays = displayOptions.keys
+        .where(
+          (String item) => item.isNotEmpty && item != currentDisplayMessage,
+        )
         .toList();
 
-    if (alternatives.isEmpty) {
+    debugPrint(
+      '[message-audit] rotate.tap | zodiac=${widget.zodiacKey} | '
+      'rawCandidates=${rawCandidates.length} | '
+      'displayCandidates=${displayOptions.length} | '
+      'currentRaw="$currentRawMessage" | '
+      'currentDisplay="$currentDisplayMessage"',
+    );
+
+    if (alternativeDisplays.isEmpty) {
       _showDelightSnackBar(
-        '오늘은 이 한마디 무드로 가도 좋아',
-        'This message already fits today pretty well',
+        '지금 보여줄 다른 한마디는 하나뿐이야',
+        'There is only one message to show right now',
       );
       return;
     }
@@ -984,14 +1026,35 @@ class _HomeScreenState extends State<HomeScreen> {
     final random = Random(
       DateTime.now().microsecondsSinceEpoch + widget.zodiacKey.hashCode,
     );
-    final nextMessage = alternatives[random.nextInt(alternatives.length)];
+    final nextDisplayMessage =
+        alternativeDisplays[random.nextInt(alternativeDisplays.length)];
+    final nextRawMessage = displayOptions[nextDisplayMessage] ?? currentRawMessage;
+
+    debugPrint(
+      '[message-audit] rotate.pick | zodiac=${widget.zodiacKey} | '
+      'previousRaw="$currentRawMessage" | '
+      'previousDisplay="$currentDisplayMessage" | '
+      'nextRaw="$nextRawMessage" | '
+      'nextDisplay="$nextDisplayMessage"',
+    );
 
     if (!mounted) {
       return;
     }
 
     setState(() {
-      _interactiveMessageOverride = nextMessage;
+      _interactiveMessageOverride = nextRawMessage;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      debugPrint(
+        '[message-audit] rotate.applied | zodiac=${widget.zodiacKey} | '
+        'appliedRaw="${_normalizeDisplayText(_interactiveMessageOverride ?? '')}" | '
+        'appliedDisplay="${_normalizeDisplayText(_currentDisplayResult['message'])}"',
+      );
     });
     _showDelightSnackBar(
       '✨ 다른 한마디로 살짝 바꿔봤어',
@@ -1213,37 +1276,374 @@ class _HomeScreenState extends State<HomeScreen> {
     return tags;
   }
 
+  int _messageVariantSeed({
+    required Set<String> tags,
+    required int rank,
+    required int score,
+  }) {
+    final sortedTags = tags.toList()..sort();
+    final signature = sortedTags.join('|');
+    return _dailySeed(salt: 101) + signature.hashCode + (rank * 17) + (score * 7);
+  }
+
+  String _pickVariant(List<String> options, int seed, {int salt = 0}) {
+    if (options.isEmpty) {
+      return '';
+    }
+
+    final index = (seed + salt).abs() % options.length;
+    return options[index];
+  }
+
+  String _pickMessageForPriorityTags({
+    required Set<String> tags,
+    required List<String> priority,
+    required Map<String, List<String>> poolByTag,
+    required int seed,
+    required int salt,
+  }) {
+    for (final tag in priority) {
+      if (!tags.contains(tag)) {
+        continue;
+      }
+
+      final options = poolByTag[tag];
+      if (options == null || options.isEmpty) {
+        continue;
+      }
+
+      return _pickVariant(options, seed, salt: salt + tag.hashCode);
+    }
+
+    return '';
+  }
+
   String _generateTodayMessageText({
     required Set<String> tags,
     required int rank,
     required int score,
   }) {
-    if (rank <= 3 || score >= 90) {
-      if (tags.contains('social')) {
-        return '가볍게 건넨 말도\n좋은 흐름으로 이어질 수 있어';
-      }
-      if (tags.contains('good_flow')) {
-        return '오늘은 흐름이 꽤 좋아.\n하고 싶던 걸 꺼내봐도 괜찮아';
-      }
-      return '기분 좋은 장면이\n생각보다 쉽게 열릴 수 있어';
+    final seed = _messageVariantSeed(tags: tags, rank: rank, score: score);
+    final isHigh = rank <= 3 || score >= 90;
+    final isLow = rank >= 9 || score < 74;
+    final isMidHigh = !isHigh && (rank <= 6 || score >= 82);
+
+    final comboMessages = <String, List<String>>{
+      'saving+social': <String>[
+        '가벼운 안부 하나가\n돈 쓰는 흐름까지 부드럽게 잡아줘',
+        '대화는 부드럽게,\n지출은 조금만 단정하게 가도 좋아',
+        '사람 사이 무드는 살리고\n불필요한 지출만 덜어내면 딱 좋아',
+        '연락운은 괜찮은 편이야.\n결제 버튼만 한 번 더 보면 더 좋아',
+        '편하게 주고받되\n돈 흐름은 한 박자만 천천히 봐도 괜찮아',
+        '말은 가볍게 풀리고\n소비는 가볍지 않게 챙기면 좋아',
+        '분위기는 잘 풀릴 수 있어.\n지출만 살짝 정리하면 더 편해져',
+        '소통은 열려 있고\n씀씀이는 조금만 차분해도 충분해',
+        '안부 한마디는 좋고\n충동 결제는 한 번만 미뤄봐도 좋아',
+        '사람 쪽 흐름은 괜찮아.\n지갑만 조금 조용히 챙겨가자',
+      ],
+      'rest+caution': <String>[
+        '오늘은 속도보다 안정감이 중요해.\n잠깐 멈추면 오히려 더 깔끔해져',
+        '무리해서 끌어올리기보다\n쉬어가는 리듬이 더 잘 맞아',
+        '조금 느슨해도 괜찮아.\n컨디션을 먼저 챙기는 쪽이 좋아',
+        '서두르기보다 숨 고르기가 먼저야.\n오늘은 그게 더 예쁘게 풀려',
+        '과하게 애쓰지 않아도 돼.\n조심성만 챙기면 충분히 괜찮아',
+        '오늘은 힘주기보다\n흐트러지지 않게 가는 쪽이 좋아',
+        '속도를 줄이면 마음도 덜 흔들려.\n천천히 가도 충분해',
+        '조금 쉬어가면서 보면\n실수 없이 지나가기 더 쉬워져',
+        '한 템포 늦춰도 괜찮아.\n오늘은 안정감이 더 중요한 날이야',
+        '차분하게만 가도 반은 한 거야.\n무리만 줄이면 충분해',
+      ],
+      'focus+good_flow': <String>[
+        '하나만 제대로 잡아도\n오늘 흐름은 꽤 예쁘게 이어질 수 있어',
+        '집중하는 만큼 바로 체감이 올 수 있어.\n우선순위 하나면 충분해',
+        '리듬이 나쁘지 않아.\n중요한 일 하나부터 끝내보자',
+        '오늘은 선명하게 고른 한 가지가\n분위기를 통째로 바꿔줄 수 있어',
+        '흐름이 열려 있는 편이야.\n집중 포인트만 또렷하면 더 좋아져',
+        '괜찮은 기회는 가까이 있어.\n한 가지에 힘을 모으면 더 잘 보여',
+        '분산되지만 않으면 좋아.\n오늘은 몰입감이 은근히 힘이 돼',
+        '손대는 것마다 흩어지기보다\n딱 한 가지에 집중해보면 좋아',
+        '오늘은 집중력이 분위기를 살려줘.\n하나만 끝내도 만족감이 커',
+        '좋은 흐름 위에 집중만 얹어도\n결과가 꽤 또렷하게 남을 수 있어',
+      ],
+      'outing+good_flow': <String>[
+        '가볍게 바깥 공기를 쐬면\n생각보다 기분이 더 빨리 열릴 수 있어',
+        '오늘은 안보다 밖이 더 잘 맞아.\n잠깐 나가보는 것도 좋아',
+        '움직일수록 흐름이 살아날 수 있어.\n짧은 외출만으로도 충분해',
+        '가벼운 산책 하나가\n오늘 무드를 산뜻하게 바꿔줄 수 있어',
+        '집 안보다 바깥 리듬이 더 좋아.\n잠깐 나갔다 와도 괜찮아',
+        '오늘은 몸을 조금 움직이면\n머리도 같이 맑아질 수 있어',
+        '가볍게 바람 쐬는 것만으로도\n좋은 타이밍이 잡힐 수 있어',
+        '외출운이 은근 괜찮아.\n짧게 움직여도 기분이 달라져',
+        '잠깐의 이동이 오늘 분위기를 살릴 수 있어.\n멀리 갈 필요는 없어',
+        '움직임이 좋은 흐름을 만들어줘.\n가볍게 나가보기 좋아',
+      ],
+    };
+
+    final openingsHigh = <String>[
+      '오늘은 흐름이 꽤 밝아.',
+      '기분 좋은 장면이 열릴 수 있어.',
+      '생각보다 부드럽게 풀릴 가능성이 커.',
+      '한 박자 가볍게 가도 운이 따라와.',
+      '오늘 무드는 꽤 산뜻한 편이야.',
+      '좋은 타이밍이 가까이 와 있어.',
+      '작은 시도가 예쁘게 이어질 수 있어.',
+      '오늘은 마음 가는 쪽이 잘 맞을 수 있어.',
+      '은근히 운이 잘 붙는 날이야.',
+      '오늘은 시작감이 꽤 괜찮아.',
+    ];
+    final openingsMid = <String>[
+      '전체 흐름은 무난한 편이야.',
+      '잔잔하지만 괜찮은 날이야.',
+      '오늘은 밸런스만 챙겨도 충분해.',
+      '크게 흔들리진 않지만 디테일이 중요해.',
+      '조금만 신경 쓰면 기분 좋게 지나갈 수 있어.',
+      '과하지 않게 가면 더 편해질 수 있어.',
+      '평소 리듬을 잘 지키면 좋은 날이야.',
+      '조용히 챙길수록 만족감이 남을 수 있어.',
+      '작은 선택이 분위기를 좌우할 수 있어.',
+      '무리 없는 흐름이라 더 다듬기 좋아.',
+    ];
+    final openingsLow = <String>[
+      '오늘은 속도를 조금만 줄여도 좋아.',
+      '무리하지만 않으면 충분히 괜찮아.',
+      '잔잔하게 가는 쪽이 더 잘 맞아.',
+      '오늘은 에너지 관리가 먼저야.',
+      '서두르지 않는 편이 훨씬 좋아.',
+      '힘을 너무 주지 않아도 괜찮아.',
+      '차분하게 가면 흐름은 지킬 수 있어.',
+      '오늘은 안정감이 더 중요한 날이야.',
+      '기세보다 페이스 조절이 잘 맞아.',
+      '한 템포 쉬어가도 충분한 날이야.',
+    ];
+
+    final closingsHigh = <String>[
+      '하고 싶던 걸 가볍게 꺼내봐도 괜찮아',
+      '작게 시작해도 체감이 꽤 좋을 수 있어',
+      '마음 가는 선택이 의외로 잘 맞을 수 있어',
+      '평소보다 자신 있게 움직여봐도 좋아',
+      '가벼운 시도 하나가 분위기를 살려줄 수 있어',
+      '오늘은 밝은 쪽으로 기울어도 괜찮아',
+      '미뤄둔 걸 건드리기에도 타이밍이 좋아',
+      '생각만 하던 걸 시작해보기 딱 좋은 날이야',
+      '좋은 흐름을 너무 어렵게 잡지 않아도 돼',
+      '작은 확신만 있어도 충분히 예쁘게 풀려',
+    ];
+    final closingsMid = <String>[
+      '작은 선택 하나가 오늘 분위기를 바꿔줄 수 있어',
+      '지금 필요한 건 과감함보다 감각적인 조절이야',
+      '한 가지만 또렷하게 챙겨도 만족감이 남아',
+      '적당한 리듬만 지켜도 오늘은 충분히 괜찮아',
+      '딱 하나만 정리해도 하루가 훨씬 가벼워질 수 있어',
+      '너무 많이 하려 하지 않는 편이 더 좋아',
+      '조금만 세심하면 흐름이 더 예쁘게 이어져',
+      '차분하게 고른 선택이 오래 가는 만족을 줄 수 있어',
+      '가볍지만 선명하게 가는 쪽이 잘 맞아',
+      '오늘은 욕심보다 밸런스가 더 예쁘게 남아',
+    ];
+    final closingsLow = <String>[
+      '페이스만 지켜도 오늘은 충분히 잘 지나가',
+      '무리하지 않는 선택이 결과적으로 더 좋아',
+      '서두르지 않으면 생각보다 훨씬 깔끔해져',
+      '오늘은 나를 덜 몰아붙이는 쪽이 맞아',
+      '천천히 가도 놓치는 건 생각보다 많지 않아',
+      '컨디션을 먼저 챙기면 흐름도 따라와',
+      '하나씩만 보면 마음도 훨씬 덜 복잡해져',
+      '조금 느슨해도 오늘은 그게 오히려 잘 맞아',
+      '지금은 안정감이 성과보다 더 중요할 수 있어',
+      '오늘은 쉬어갈 줄 아는 감각이 꽤 중요해',
+    ];
+
+    final tagSpecificHigh = <String, List<String>>{
+      'social': <String>[
+        '가볍게 건넨 말이\n생각보다 따뜻하게 돌아올 수 있어',
+        '연락 하나만 열어도\n분위기가 꽤 부드럽게 풀릴 수 있어',
+        '사람 사이 무드가 밝은 편이야.\n편하게 다가가도 좋아',
+        '오늘은 대화의 온도가 좋아.\n짧은 안부도 충분히 힘이 돼',
+        '말 한마디가 분위기를 살릴 수 있어.\n너무 어렵게 생각하지 않아도 돼',
+        '편하게 건넨 리액션이\n좋은 연결로 이어질 수 있어',
+        '오늘은 소통운이 꽤 좋은 편이야.\n부드럽게 열어봐도 괜찮아',
+        '주고받는 무드가 밝아.\n말문을 여는 쪽이 더 잘 맞아',
+        '답장 하나에도 온기가 실릴 수 있어.\n편하게 보내봐도 좋아',
+        '사람 쪽 흐름이 예쁘게 열려 있어.\n가볍게 먼저 움직여봐',
+      ],
+      'saving': <String>[
+        '사소한 선택 하나가\n오늘 컨디션까지 더 가볍게 해줘',
+        '돈 흐름은 작게 조절할수록 더 편해질 수 있어',
+        '결제 전에 한 번만 멈추면\n오늘 리듬이 훨씬 깔끔해져',
+        '작은 절제가 오늘 만족도를 더 높여줄 수 있어',
+        '지갑을 조용히 챙기는 감각이\n오늘은 꽤 잘 맞아',
+        '많이 아끼기보다 딱 하나만 줄여도 충분해',
+        '오늘은 소비 감각을 예쁘게 정리하기 좋은 날이야',
+        '불필요한 하나만 덜어내도\n마음이 꽤 가벼워질 수 있어',
+        '지출은 선명하게, 마음은 가볍게 가는 쪽이 좋아',
+        '오늘은 절제감이 오히려 만족을 키워줄 수 있어',
+      ],
+      'rest': <String>[
+        '억지로 끌어올리지 않아도 괜찮아.\n내 리듬을 믿어봐',
+        '조금 느슨해도 오늘은 그게 더 잘 맞아',
+        '휴식이 게으름처럼 느껴져도\n지금은 꼭 필요한 리듬일 수 있어',
+        '오늘은 쉬는 감각이 하루 분위기를 살려줄 수 있어',
+        '잠깐의 여유가 생각보다 큰 차이를 만들 수 있어',
+        '무리해서 채우지 않아도 괜찮아.\n지금은 비워두는 감각도 좋아',
+        '오늘은 회복 쪽에 마음을 줘도 충분해',
+        '잠깐 멈추면 다시 가는 힘이 더 선명해질 수 있어',
+        '나를 덜 몰아붙이는 선택이 오늘은 더 잘 맞아',
+        '한숨 돌리는 타이밍이 오히려 좋은 흐름을 불러와',
+      ],
+      'outing': <String>[
+        '가볍게 바깥 공기를 쐬면\n생각보다 기분이 빨리 열릴 수 있어',
+        '오늘은 안보다 밖이 더 잘 맞아.\n잠깐 나가도 괜찮아',
+        '움직임이 생기면 마음도 같이 가벼워질 수 있어',
+        '짧은 외출 하나가 오늘 무드를 환하게 바꿔줄 수 있어',
+        '집중이 안 될수록 잠깐 움직여보는 게 더 좋아',
+        '오늘은 공간을 바꾸는 것만으로도 리듬이 달라질 수 있어',
+        '멀리 갈 필요는 없어.\n잠깐 나가는 것만으로도 충분해',
+        '가볍게 걷는 시간 하나가 기분을 살려줄 수 있어',
+        '창문 밖 공기만 바꿔도 분위기가 달라질 수 있어',
+        '오늘은 몸을 조금 움직일수록 마음도 더 산뜻해져',
+      ],
+      'focus': <String>[
+        '하나만 또렷하게 잡아도\n오늘 무드는 충분히 좋아져',
+        '중요한 한 가지가 오늘 분위기를 정리해줄 수 있어',
+        '여러 개보다 하나가 더 잘 맞는 날이야',
+        '집중 포인트를 줄일수록 체감은 더 또렷해질 수 있어',
+        '오늘은 선명하게 고른 한 가지가 꽤 힘이 돼',
+        '하나만 끝내도 만족감이 크게 남을 수 있어',
+        '분산되기보다 또렷하게 가는 쪽이 잘 맞아',
+        '할 일 하나를 완성하면 마음도 같이 정리될 수 있어',
+        '오늘은 몰입감이 작은 자신감을 만들어줄 수 있어',
+        '한 가지만 잡아도 하루 리듬이 꽤 좋아질 수 있어',
+      ],
+      'caution': <String>[
+        '조금만 천천히 가도 돼.\n서두르지 않으면 더 깔끔해져',
+        '오늘은 기세보다 조절감이 더 중요할 수 있어',
+        '한 번 더 보는 습관이 오늘 분위기를 지켜줄 수 있어',
+        '작은 실수만 줄여도 충분히 괜찮은 날이야',
+        '급하게 넘기지 않는 것만으로도 흐름이 좋아져',
+        '오늘은 서두르지 않는 감각이 꽤 중요해',
+        '조심성 하나가 마음까지 더 편하게 만들어줄 수 있어',
+        '한 박자 쉬어보면 더 또렷하게 보일 수 있어',
+        '속도를 낮추면 오히려 결과가 더 예쁘게 남아',
+        '오늘은 확신보다 확인이 더 힘이 되는 날이야',
+      ],
+      'good_flow': <String>[
+        '오늘은 흐름이 꽤 좋아.\n하고 싶던 걸 꺼내봐도 괜찮아',
+        '기분 좋은 장면이 생각보다 쉽게 열릴 수 있어',
+        '좋은 타이밍이 가까이에 있어.\n가볍게 움직여봐도 좋아',
+        '전체 무드가 밝은 편이야.\n작게 시작해도 반응이 괜찮아',
+        '오늘은 부드러운 흐름을 믿어봐도 괜찮아',
+        '가볍게 던진 선택이 좋은 쪽으로 이어질 수 있어',
+        '은근히 운이 붙는 날이야.\n너무 망설이지 않아도 돼',
+        '좋은 느낌이 스며들기 쉬운 날이야.\n마음 가는 쪽을 봐도 좋아',
+        '오늘은 기회가 어렵지 않게 보일 수 있어',
+        '부담 없이 시작한 일이 생각보다 잘 맞을 수 있어',
+      ],
+      'home': <String>[
+        '내 공간을 조금만 다듬어도\n마음이 더 또렷해질 수 있어',
+        '정리된 한 구석이 오늘 리듬을 예쁘게 잡아줄 수 있어',
+        '큰 정리보다 작은 정돈이 더 잘 맞는 날이야',
+        '오늘은 내 자리의 분위기를 챙기는 게 꽤 중요해',
+        '공간을 가볍게 정리하면 마음도 덜 복잡해질 수 있어',
+        '한 곳만 정리해도 하루 무드가 달라질 수 있어',
+        '집 안의 작은 변화가 생각보다 기분을 살려줘',
+        '오늘은 익숙한 공간을 다듬는 감각이 잘 맞아',
+        '정돈된 시야가 오늘 흐름을 부드럽게 만들어줄 수 있어',
+        '주변을 정리하면 머릿속도 같이 정리될 수 있어',
+      ],
+      'food': <String>[
+        '작은 한 끼 감각이 오늘 컨디션을 꽤 좌우할 수 있어',
+        '배고픔을 미루지 않는 것만으로도 흐름이 달라질 수 있어',
+        '오늘은 몸부터 챙기는 선택이 더 잘 맞아',
+        '간단하게라도 챙겨 먹으면 기분도 같이 올라올 수 있어',
+        '컨디션은 사소한 섭취에서부터 달라질 수 있어',
+        '물 한 잔, 가벼운 한 입이 생각보다 힘이 돼',
+        '오늘은 몸을 챙기는 감각이 꽤 중요해',
+        '가볍게 채워두면 하루 리듬이 더 부드러워질 수 있어',
+        '먹는 흐름을 놓치지 않으면 컨디션이 더 안정돼',
+        '작은 보충이 오늘 만족도를 꽤 올려줄 수 있어',
+      ],
+    };
+
+    final openings = isHigh
+        ? openingsHigh
+        : isLow
+            ? openingsLow
+            : openingsMid;
+    final closings = isHigh
+        ? closingsHigh
+        : isLow
+            ? closingsLow
+            : closingsMid;
+
+    final comboPriority = <String>[
+      if (tags.contains('saving') && tags.contains('social')) 'saving+social',
+      if (tags.contains('rest') && tags.contains('caution')) 'rest+caution',
+      if (tags.contains('focus') && tags.contains('good_flow')) 'focus+good_flow',
+      if (tags.contains('outing') && tags.contains('good_flow')) 'outing+good_flow',
+    ];
+
+    final comboLine = comboPriority.isNotEmpty
+        ? _pickVariant(
+            comboMessages[comboPriority.first] ?? const <String>[],
+            seed,
+            salt: 13,
+          )
+        : '';
+
+    if (comboLine.isNotEmpty) {
+      return comboLine;
     }
 
-    if (tags.contains('caution')) {
-      return '조금만 천천히 가도 돼.\n서두르지 않으면 더 깔끔해져';
+    final firstLine = _pickMessageForPriorityTags(
+      tags: tags,
+      priority: const <String>[
+        'social',
+        'focus',
+        'saving',
+        'rest',
+        'caution',
+        'outing',
+        'good_flow',
+        'home',
+        'food',
+      ],
+      poolByTag: tagSpecificHigh,
+      seed: seed,
+      salt: isHigh ? 17 : isMidHigh ? 23 : 31,
+    );
+    final secondLine = _pickVariant(
+      closings,
+      seed,
+      salt: isHigh ? 41 : isLow ? 53 : 47,
+    );
+    final fallbackLine = _pickVariant(
+      openings,
+      seed,
+      salt: isHigh ? 61 : isLow ? 71 : 67,
+    );
+
+    final lines = <String>[
+      if (firstLine.isNotEmpty) ...firstLine.split('\n'),
+      if (secondLine.isNotEmpty) secondLine,
+    ].where((String item) => item.trim().isNotEmpty).toList();
+
+    final deduped = <String>[];
+    for (final line in lines) {
+      if (deduped.any((existing) => existing.trim() == line.trim())) {
+        continue;
+      }
+      deduped.add(line.trim());
     }
-    if (tags.contains('focus')) {
-      return '하나만 또렷하게 잡아도\n오늘 무드는 충분히 좋아져';
+
+    if (deduped.isEmpty) {
+      return '$fallbackLine\n${_pickVariant(closings, seed, salt: 79)}';
     }
-    if (tags.contains('saving')) {
-      return '사소한 선택 하나가\n오늘 컨디션을 더 가볍게 해줘';
+
+    if (deduped.length == 1) {
+      return '${deduped.first}\n${_pickVariant(closings, seed, salt: 83)}';
     }
-    if (tags.contains('rest')) {
-      return '억지로 끌어올리지 않아도 괜찮아.\n내 리듬을 믿어봐';
-    }
-    if (rank >= 9 || score < 74) {
-      return '오늘은 무리하지 않는 쪽이 좋아.\n페이스만 지켜도 충분해';
-    }
-    return '잔잔하지만 괜찮은 흐름이야.\n작은 선택이 분위기를 바꿔줄 수 있어';
+
+    return deduped.take(2).join('\n');
   }
 
   String _generateActionLabel({
