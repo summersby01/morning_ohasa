@@ -2,6 +2,6 @@
   "name": "morning-ohasa-vercel-api",
   "private": true,
   "scripts": {
-    "vercel-build": "if [ ! -d .flutter-sdk ]; then git clone https://github.com/flutter/flutter.git --depth 1 --branch stable .flutter-sdk; fi && export PATH=\"$PWD/.flutter-sdk/bin:$PATH\" && flutter --version && flutter config --enable-web && flutter pub get && flutter build web --release"
+    "vercel-build": "node scripts/vercel-build.mjs"
   }
 }
