@@ -38,6 +38,10 @@ const String horoscopeScorePreferenceKey = 'daily_horoscope_score';
 const String horoscopeActionPreferenceKey = 'daily_horoscope_action';
 const String horoscopeRankPreferenceKey = 'daily_horoscope_rank';
 const String horoscopeEmojiPreferenceKey = 'daily_horoscope_emoji';
+const String horoscopeCacheSourcePreferenceKey = 'daily_horoscope_cache_source';
+const String horoscopeRemoteRankingsPreferenceKey =
+    'daily_horoscope_remote_rankings';
+const String horoscopeCacheSourceVersion = 'tv-asahi-goodmorning-v1';
 final ValueNotifier<String> appFontKeyNotifier = ValueNotifier<String>(
   'notoSansKr',
 );
@@ -322,16 +326,53 @@ String currentDailyDateKey() {
   return '${now.year}-$month-$day';
 }
 
+Map<String, Map<String, dynamic>> decodeCachedRemoteRankings(String? raw) {
+  if (raw == null || raw.trim().isEmpty) {
+    return <String, Map<String, dynamic>>{};
+  }
+
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      return <String, Map<String, dynamic>>{};
+    }
+
+    final normalized = <String, Map<String, dynamic>>{};
+    for (final dynamic item in decoded) {
+      if (item is! Map) {
+        continue;
+      }
+
+      final ranking = Map<String, dynamic>.from(item);
+      final zodiacKey = ranking['zodiacKey'];
+      if (zodiacKey is! String || zodiacKey.isEmpty) {
+        continue;
+      }
+
+      normalized[zodiacKey] = ranking;
+    }
+
+    return normalized;
+  } catch (_) {
+    return <String, Map<String, dynamic>>{};
+  }
+}
+
 Map<String, dynamic>? loadInitialDailyHoroscopeResult({
   required SharedPreferences preferences,
   required String zodiacKey,
 }) {
+  final savedCacheSource = preferences.getString(
+    horoscopeCacheSourcePreferenceKey,
+  );
   final savedDate = normalizeDailyDateKey(
     preferences.getString(horoscopeDatePreferenceKey),
   );
   final savedZodiacKey = preferences.getString(horoscopeZodiacPreferenceKey);
 
-  if (savedDate != currentDailyDateKey() || savedZodiacKey != zodiacKey) {
+  if (savedCacheSource != horoscopeCacheSourceVersion ||
+      savedDate != currentDailyDateKey() ||
+      savedZodiacKey != zodiacKey) {
     return null;
   }
 
@@ -340,6 +381,9 @@ Map<String, dynamic>? loadInitialDailyHoroscopeResult({
   final savedAction = preferences.getString(horoscopeActionPreferenceKey);
   final savedRank = preferences.getInt(horoscopeRankPreferenceKey);
   final savedEmoji = preferences.getString(horoscopeEmojiPreferenceKey);
+  final savedRemoteRankings = decodeCachedRemoteRankings(
+    preferences.getString(horoscopeRemoteRankingsPreferenceKey),
+  );
 
   if (savedMessage == null ||
       savedScore == null ||
@@ -357,6 +401,7 @@ Map<String, dynamic>? loadInitialDailyHoroscopeResult({
     'action': savedAction,
     'rank': savedRank,
     'emoji': savedEmoji,
+    'remoteRankings': savedRemoteRankings,
   };
 }
 
@@ -755,6 +800,33 @@ class _HomeScreenState extends State<HomeScreen> {
         _fallbackGeneratedRankForZodiac(zodiacKey);
   }
 
+  List<String> _sortedRankingArray(Map<String, int> rankings) {
+    final entries = rankings.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+    return entries.map((entry) => '${entry.value}:${entry.key}').toList();
+  }
+
+  void _logRankingArrayAudit(
+    String stage, {
+    Map<String, Map<String, dynamic>>? remoteRankings,
+  }) {
+    final sourceRankings = <String, int>{};
+    final source = remoteRankings ?? _remoteRankingsByZodiac;
+
+    for (final entry in source.entries) {
+      final rank = entry.value['rank'];
+      if (rank is int) {
+        sourceRankings[entry.key] = rank;
+      }
+    }
+
+    debugPrint(
+      '[rank-audit] $stage.arrays | date=${_todayString()} | '
+      'source=${_sortedRankingArray(sourceRankings)} | '
+      'app=${_sortedRankingArray(_resolvedRankingsByZodiac)}',
+    );
+  }
+
   int get _currentZodiacRank => _rankForZodiac(widget.zodiacKey);
 
   void _logRankConsistencyAudit(String stage) {
@@ -799,12 +871,23 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _dailyHoroscopeResult = widget.initialDailyHoroscopeResult;
+    final initialRemoteRankings =
+        widget.initialDailyHoroscopeResult?['remoteRankings']
+            as Map<String, Map<String, dynamic>>? ??
+        <String, Map<String, dynamic>>{};
+    if (initialRemoteRankings.isNotEmpty) {
+      _remoteRankingsByZodiac = initialRemoteRankings;
+      _dailyHoroscopeResult = Map<String, dynamic>.from(
+        widget.initialDailyHoroscopeResult!,
+      )..remove('remoteRankings');
+    }
     _isDailyHoroscopeLoading = widget.initialDailyHoroscopeResult == null;
     _logDailyResultAudit(
       'initState.initial_state',
       result: _dailyHoroscopeResult,
       extra: <String, Object?>{
         'hasInitialCachedResult': widget.initialDailyHoroscopeResult != null,
+        'initialRemoteRankingsCount': initialRemoteRankings.length,
       },
     );
     _loadSavedTheme();
@@ -2081,6 +2164,10 @@ class _HomeScreenState extends State<HomeScreen> {
         'zodiac=${widget.zodiacKey} | selectedEntryRank=${remoteRankings[widget.zodiacKey]?['rank']} | '
         'count=${remoteRankings.length}',
       );
+      _logRankingArrayAudit(
+        'remote_rankings',
+        remoteRankings: remoteRankings,
+      );
 
       final remoteEntry = remoteRankings[widget.zodiacKey];
       final message = _sanitizeMessageForKoreanDisplay(
@@ -2142,7 +2229,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _saveDailyHoroscope(Map<String, dynamic> result) async {
+  Future<void> _saveDailyHoroscope(
+    Map<String, dynamic> result, {
+    Map<String, Map<String, dynamic>> remoteRankings =
+        const <String, Map<String, dynamic>>{},
+  }) async {
     final sanitizedMessage = _sanitizeMessageForKoreanDisplay(result['message']);
     final sanitizedAction = _sanitizeActionForKoreanDisplay(result['action']);
     final persistableResult = <String, dynamic>{
@@ -2179,30 +2270,57 @@ class _HomeScreenState extends State<HomeScreen> {
       horoscopeEmojiPreferenceKey,
       persistableResult['emoji'] as String,
     );
+    await preferences.setString(
+      horoscopeCacheSourcePreferenceKey,
+      horoscopeCacheSourceVersion,
+    );
+    if (remoteRankings.isEmpty) {
+      await preferences.remove(horoscopeRemoteRankingsPreferenceKey);
+    } else {
+      final rankingsList = remoteRankings.values.toList()
+        ..sort(
+          (a, b) => ((a['rank'] as int?) ?? 999).compareTo(
+            (b['rank'] as int?) ?? 999,
+          ),
+        );
+      await preferences.setString(
+        horoscopeRemoteRankingsPreferenceKey,
+        jsonEncode(rankingsList),
+      );
+    }
     _logDailyResultAudit(
       'local_cache.saved',
       result: persistableResult,
       extra: <String, Object?>{
         'cacheDate': persistableResult['date'],
+        'cacheSource': horoscopeCacheSourceVersion,
+        'remoteRankingsCount': remoteRankings.length,
       },
     );
   }
 
   Future<Map<String, dynamic>?> _loadSavedDailyHoroscope() async {
     final preferences = await SharedPreferences.getInstance();
+    final savedCacheSource = preferences.getString(
+      horoscopeCacheSourcePreferenceKey,
+    );
     final savedDate = preferences.getString(horoscopeDatePreferenceKey);
     final savedZodiacKey = preferences.getString(horoscopeZodiacPreferenceKey);
 
     debugPrint(
       '[daily-audit] local_cache.load_check | now=${DateTime.now().toIso8601String()} | '
       'today=${_todayString()} | savedDate=${normalizeDailyDateKey(savedDate)} | '
-      'savedZodiac=$savedZodiacKey | currentZodiac=${widget.zodiacKey}',
+      'savedZodiac=$savedZodiacKey | currentZodiac=${widget.zodiacKey} | '
+      'savedCacheSource=$savedCacheSource',
     );
 
-    if (normalizeDailyDateKey(savedDate) != _todayString() ||
+    if (savedCacheSource != horoscopeCacheSourceVersion ||
+        normalizeDailyDateKey(savedDate) != _todayString() ||
         savedZodiacKey != widget.zodiacKey) {
       debugPrint(
-        '[daily-audit] local_cache.miss | reason=date_or_zodiac_mismatch',
+        '[daily-audit] local_cache.miss | '
+        'reason=date_or_zodiac_or_source_mismatch | '
+        'expectedCacheSource=$horoscopeCacheSourceVersion',
       );
       return null;
     }
@@ -2212,6 +2330,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final savedAction = preferences.getString(horoscopeActionPreferenceKey);
     final savedRank = preferences.getInt(horoscopeRankPreferenceKey);
     final savedEmoji = preferences.getString(horoscopeEmojiPreferenceKey);
+    final savedRemoteRankings = decodeCachedRemoteRankings(
+      preferences.getString(horoscopeRemoteRankingsPreferenceKey),
+    );
 
     if (savedMessage == null ||
         savedScore == null ||
@@ -2232,6 +2353,7 @@ class _HomeScreenState extends State<HomeScreen> {
       'action': _sanitizeActionForKoreanDisplay(savedAction),
       'rank': savedRank,
       'emoji': savedEmoji,
+      'remoteRankings': savedRemoteRankings,
     };
 
     _logDailyResultAudit(
@@ -2240,6 +2362,8 @@ class _HomeScreenState extends State<HomeScreen> {
       extra: <String, Object?>{
         'cacheDate': savedDate,
         'usedCachedResult': true,
+        'cacheSource': savedCacheSource,
+        'remoteRankingsCount': savedRemoteRankings.length,
       },
     );
     return result;
@@ -2260,10 +2384,18 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
+        final savedRemoteRankings =
+            savedResult['remoteRankings'] as Map<String, Map<String, dynamic>>? ??
+            <String, Map<String, dynamic>>{};
+        if (savedRemoteRankings.isNotEmpty) {
+          _remoteRankingsByZodiac = savedRemoteRankings;
+        }
         _dailyHoroscopeResult = Map<String, dynamic>.from(savedResult);
+        _dailyHoroscopeResult!.remove('remoteRankings');
         _isDailyHoroscopeLoading = false;
         _interactiveMessageOverride = null;
       });
+      _logRankingArrayAudit('local_cache_applied');
       _logRankConsistencyAudit('local_cache_applied');
 
       _logDailyResultAudit(
@@ -2296,7 +2428,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final persistableResult = Map<String, dynamic>.from(result)
       ..remove('remoteRankings');
-    await _saveDailyHoroscope(persistableResult);
+    await _saveDailyHoroscope(
+      persistableResult,
+      remoteRankings: remoteRankings,
+    );
 
     if (!mounted) {
       return;
@@ -2311,6 +2446,11 @@ class _HomeScreenState extends State<HomeScreen> {
       _dailyHoroscopeResult = Map<String, dynamic>.from(result)
         ..remove('remoteRankings');
     });
+    _logRankingArrayAudit(
+      remoteRankings.isNotEmpty
+          ? 'remote_result_applied'
+          : 'generated_result_applied',
+    );
     _logRankConsistencyAudit(
       remoteRankings.isNotEmpty
           ? 'remote_result_applied'

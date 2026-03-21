@@ -1,20 +1,27 @@
-const OHAASA_PAGE_URL = 'https://www.asahi.co.jp/ohaasa/week/horoscope/index.html';
-const OHAASA_DATA_URL = 'https://www.asahi.co.jp/data/ohaasa2020/horoscope.json';
+const TV_ASAHI_URANAI_URL = 'https://www.tv-asahi.co.jp/goodmorning/uranai/';
 
-const ZODIAC_BY_STATUS = {
-  '01': { zodiacKey: 'aries', zodiacJa: 'おひつじ座', zodiacKo: '양자리' },
-  '02': { zodiacKey: 'taurus', zodiacJa: 'おうし座', zodiacKo: '황소자리' },
-  '03': { zodiacKey: 'gemini', zodiacJa: 'ふたご座', zodiacKo: '쌍둥이자리' },
-  '04': { zodiacKey: 'cancer', zodiacJa: 'かに座', zodiacKo: '게자리' },
-  '05': { zodiacKey: 'leo', zodiacJa: 'しし座', zodiacKo: '사자자리' },
-  '06': { zodiacKey: 'virgo', zodiacJa: 'おとめ座', zodiacKo: '처녀자리' },
-  '07': { zodiacKey: 'libra', zodiacJa: 'てんびん座', zodiacKo: '천칭자리' },
-  '08': { zodiacKey: 'scorpio', zodiacJa: 'さそり座', zodiacKo: '전갈자리' },
-  '09': { zodiacKey: 'sagittarius', zodiacJa: 'いて座', zodiacKo: '사수자리' },
-  '10': { zodiacKey: 'capricorn', zodiacJa: 'やぎ座', zodiacKo: '염소자리' },
-  '11': { zodiacKey: 'aquarius', zodiacJa: 'みずがめ座', zodiacKo: '물병자리' },
-  '12': { zodiacKey: 'pisces', zodiacJa: 'うお座', zodiacKo: '물고기자리' },
-};
+const ZODIACS = [
+  { zodiacKey: 'aries', zodiacJa: 'おひつじ座', zodiacKo: '양자리' },
+  { zodiacKey: 'taurus', zodiacJa: 'おうし座', zodiacKo: '황소자리' },
+  { zodiacKey: 'gemini', zodiacJa: 'ふたご座', zodiacKo: '쌍둥이자리' },
+  { zodiacKey: 'cancer', zodiacJa: 'かに座', zodiacKo: '게자리' },
+  { zodiacKey: 'leo', zodiacJa: 'しし座', zodiacKo: '사자자리' },
+  { zodiacKey: 'virgo', zodiacJa: 'おとめ座', zodiacKo: '처녀자리' },
+  { zodiacKey: 'libra', zodiacJa: 'てんびん座', zodiacKo: '천칭자리' },
+  { zodiacKey: 'scorpio', zodiacJa: 'さそり座', zodiacKo: '전갈자리' },
+  { zodiacKey: 'sagittarius', zodiacJa: 'いて座', zodiacKo: '사수자리' },
+  { zodiacKey: 'capricorn', zodiacJa: 'やぎ座', zodiacKo: '염소자리' },
+  { zodiacKey: 'aquarius', zodiacJa: 'みずがめ座', zodiacKo: '물병자리' },
+  { zodiacKey: 'pisces', zodiacJa: 'うお座', zodiacKo: '물고기자리' },
+];
+
+const ZODIAC_BY_JA = new Map(ZODIACS.map((zodiac) => [zodiac.zodiacJa, zodiac]));
+const ZODIAC_NAME_PATTERN = new RegExp(
+  `^(${ZODIACS.map((zodiac) => zodiac.zodiacJa).join('|')})$`,
+);
+const ZODIAC_SECTION_PATTERN = new RegExp(
+  `^(${ZODIACS.map((zodiac) => zodiac.zodiacJa).join('|')})\\(`,
+);
 
 const dailyTranslationCache = new Map();
 
@@ -258,202 +265,67 @@ function translateJaToKoFallback(text) {
     ['丁寧に髪をブラッシングする', '머리를 차분히 정리해보기'],
     ['ひじきを食べる', '해조류를 챙겨 먹기'],
     ['部屋に花を飾る', '작은 꽃이나 식물 두기'],
-    ['オセロで遊ぶ', '가벼운 게임 한 판 하기'],
-    ['２番目に空いているレジに並ぶ', '조금 덜 붐비는 줄 선택하기'],
-    ['好きな歌詞をメモする', '좋아하는 가사 한 줄 적기'],
-    ['鶏肉を食べる', '단백질 챙겨 먹기'],
-    ['ドライブをする', '잠깐 바람 쐬기'],
-    ['こっそりガッツポーズをする', '작게 스스로 응원해주기'],
-    ['テーマパークに行く', '기분 전환되는 장소 떠올리기'],
-    ['腕時計をいつもと反対側につける', '평소와 반대로 작은 변화를 주기'],
   ];
 
   return replaceAllKeywords(text, dictionary);
 }
 
 function translateJaToEnFallback(text) {
-  const original = cleanWhitespace(text);
   const dictionary = [
-    ['新たな世界が広がる時', 'A new mood is opening up'],
+    ['新たな世界が広がる時', 'A new world may open up today'],
     ['いろいろな角度から物事を見よう', 'Try looking at things from different angles'],
-    ['普段読まない分野の本もオススメ', 'A book outside your usual taste could be nice'],
-    ['周囲から注目されるかも', 'You may get a little more attention today'],
-    ['温めていた企画を発表してみては？', 'It may be a good time to share your idea'],
-    ['ちょっとした節約で金運ＵＰ', 'A small saving move could help your money luck'],
-    ['通信費の見直しにツキあり', 'Reviewing fixed expenses may go well'],
-    ['何でも効率よくこなせる日', 'Things can flow smoothly today'],
-    ['誰よりも早く作業に取りかかって', 'Starting a bit earlier will help'],
-    ['皆の人気者になれそう♪', 'Your vibe may feel extra warm and likable'],
-    ['聞き上手を心掛けてね', 'Listening well will work better than talking more'],
-    ['苦手な事を克服できる予感', 'Something difficult may feel more manageable'],
-    ['上手にコツをつかめるよ', 'You can catch the rhythm faster than expected'],
-    ['恋のパワーがみなぎり活発に', 'Your emotional energy feels lively'],
-    ['落ち着いてチャンスを狙ってね', 'Stay calm and wait for the right moment'],
-    ['ケアレスミスに注意が必要', 'Watch out for small mistakes'],
-    ['丁寧な確認を行うようにして', 'A careful check will help'],
-    ['一人で解決できない問題が発生', 'Something may be hard to solve alone'],
-    ['先輩や上司に相談すると◎', 'Asking for help could work well'],
-    ['あれこれ考えすぎてグッタリ', 'Overthinking may drain your energy'],
-    ['もう少し気楽に構えて大丈夫', 'It is okay to take it more lightly'],
-    ['人づきあいを面倒に感じるかも', 'Social energy may feel low today'],
-    ['好きな音楽を聴いてリフレッシュ', 'Refresh with music you love'],
-    ['相手の言葉に振り回されそう', 'Do not let other people’s words shake you'],
-    ['根拠のないうわさ話などは', 'Do not take vague rumors too seriously'],
-    ['聞き流すのが一番だよ', 'Letting it pass is best'],
-    ['丁寧に髪をブラッシングする', 'Brush your hair with care'],
-    ['ひじきを食べる', 'Eat some seaweed'],
-    ['部屋に花を飾る', 'Put flowers in your room'],
-    ['オセロで遊ぶ', 'Play a light game'],
-    ['２番目に空いているレジに並ぶ', 'Pick the second shortest line'],
-    ['好きな歌詞をメモする', 'Write down a lyric you love'],
-    ['鶏肉を食べる', 'Eat some chicken'],
-    ['ドライブをする', 'Go for a short drive'],
-    ['こっそりガッツポーズをする', 'Give yourself a tiny victory pose'],
-    ['テーマパークに行く', 'Think of a fun escape'],
-    ['腕時計をいつもと反対側につける', 'Try a tiny switch in your routine'],
+    ['普段読まない分野の本もオススメ', 'A book outside your usual taste could be a good pick'],
+    ['周囲から注目されるかも', 'You may draw a bit more attention than usual'],
+    ['温めていた企画を発表してみては？', 'This could be a good time to share an idea you have been holding onto'],
+    ['ちょっとした節約で金運ＵＰ', 'A small saving habit could help your money luck'],
+    ['通信費の見直しにツキあり', 'Reviewing monthly bills could go well'],
+    ['何でも効率よくこなせる日', 'You may handle things efficiently today'],
+    ['誰よりも早く作業に取りかかって', 'Starting earlier than others could help'],
+    ['皆の人気者になれそう♪', 'You could easily become the center of attention'],
+    ['聞き上手を心掛けてね', 'Try focusing on listening well'],
+    ['苦手な事を克服できる予感', 'You may get through something that usually feels difficult'],
+    ['上手にコツをつかめるよ', 'You could quickly get the hang of it'],
+    ['恋のパワーがみなぎり活発に', 'Romantic energy may feel especially lively'],
+    ['落ち着いてチャンスを狙ってね', 'Stay calm and watch for the right moment'],
+    ['ケアレスミスに注意が必要', 'Watch out for small careless mistakes'],
+    ['丁寧な確認を行うようにして', 'Take extra time to double-check things'],
+    ['一人で解決できない問題が発生', 'A problem that is hard to solve alone may come up'],
+    ['先輩や上司に相談すると◎', 'Talking to someone more experienced could help'],
+    ['あれこれ考えすぎてグッタリ', 'Overthinking may leave you drained'],
+    ['もう少し気楽に構えて大丈夫', 'It is okay to keep things a little lighter'],
+    ['人づきあいを面倒に感じるかも', 'Social interactions may feel tiring'],
+    ['好きな音楽を聴いてリフレッシュ', 'Refresh yourself with music you like'],
+    ['相手の言葉に振り回されそう', 'You may be swayed by what others say'],
+    ['根拠のないうわさ話などは', 'Try not to trust baseless rumors'],
+    ['聞き流すのが一番だよ', 'It may be best to let it pass'],
+    ['丁寧に髪をブラッシングする', 'Brush your hair carefully'],
+    ['ひじきを食べる', 'Try eating hijiki seaweed'],
+    ['部屋に花を飾る', 'Try placing flowers in your room'],
   ];
 
-  const direct = replaceAllKeywords(original, dictionary);
-  if (direct !== original && !containsJapanese(direct)) {
-    return direct;
-  }
-
-  const actionObjectDictionary = [
-    ['グレーの小物', 'a gray accessory'],
-    ['好きな歌詞', 'a lyric you love'],
-    ['好きな音楽', 'music you love'],
-    ['テーマパーク', 'a fun place'],
-    ['腕時計', 'your watch'],
-    ['部屋に花', 'flowers in your room'],
-    ['花', 'flowers'],
-    ['ひじき', 'hijiki'],
-    ['鶏肉', 'chicken'],
-    ['ドライブ', 'a short drive'],
-    ['オセロ', 'a quick game'],
-    ['２番目に空いているレジ', 'the second shortest line'],
-  ];
-
-  const translateActionObject = (value) => {
-    let output = cleanWhitespace(value);
-    for (const [source, target] of actionObjectDictionary) {
-      output = output.split(source).join(target);
-    }
-    return cleanWhitespace(output);
-  };
-
-  const patterns = [
-    [/^(.+)を持ち歩く$/, (match) => `Carry ${translateActionObject(match[1])} with you`],
-    [/^(.+)を食べる$/, (match) => `Eat ${translateActionObject(match[1])}`],
-    [/^(.+)をする$/, (match) => `Try ${translateActionObject(match[1])}`],
-    [/^(.+)に行く$/, (match) => `Go to ${translateActionObject(match[1])}`],
-    [/^(.+)をメモする$/, (match) => `Write down ${translateActionObject(match[1])}`],
-    [/^(.+)を飾る$/, (match) => `Place ${translateActionObject(match[1])}`],
-    [/^(.+)に並ぶ$/, (match) => `Stand in ${translateActionObject(match[1])}`],
-    [/^(.+)を聴いてリフレッシュ$/, (match) => `Refresh with ${translateActionObject(match[1])}`],
-    [/^(.+)をいつもと反対側につける$/, (match) => `Wear ${translateActionObject(match[1])} on the opposite side`],
-  ];
-
-  for (const [pattern, formatter] of patterns) {
-    const matched = original.match(pattern);
-    if (!matched) {
-      continue;
-    }
-
-    const translated = cleanWhitespace(formatter(matched));
-    if (translated && !containsJapanese(translated)) {
-      return translated;
-    }
-  }
-
-  return null;
-}
-
-async function translateWithDeepL(text, targetLang, dateKey) {
-  if (!text) {
-    return '';
-  }
-
-  const apiKey = process.env.DEEPL_API_KEY;
-  if (!apiKey) {
-    console.error('[api/ohaasa] DEEPL_API_KEY is missing');
-    return null;
-  }
-
-  const cacheKey = cacheKeyForTranslation({
-    dateKey,
-    targetLang,
-    text,
-  });
-  const cachedValue = dailyTranslationCache.get(cacheKey);
-  if (cachedValue) {
-    return cachedValue;
-  }
-
-  try {
-    const body = new URLSearchParams({
-      text,
-      source_lang: 'JA',
-      target_lang: targetLang,
-    });
-
-    const response = await fetch('https://api-free.deepl.com/v2/translate', {
-      method: 'POST',
-      headers: {
-        Authorization: `DeepL-Auth-Key ${apiKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: body.toString(),
-    });
-
-    if (!response.ok) {
-      console.error(
-        `[api/ohaasa] DeepL request failed (${targetLang})`,
-        response.status,
-      );
-      return null;
-    }
-
-    const payload = await response.json();
-    const translatedText = cleanWhitespace(
-      payload?.translations?.[0]?.text,
-    );
-
-    if (!translatedText) {
-      return null;
-    }
-
-    dailyTranslationCache.set(cacheKey, translatedText);
-    return translatedText;
-  } catch (error) {
-    console.error(`[api/ohaasa] DeepL translation failed (${targetLang})`, error);
-    return null;
-  }
+  return replaceAllKeywords(text, dictionary);
 }
 
 async function translateWithFallback(text, dateKey) {
   const original = normalizeSourceText(text);
+  if (!original) {
+    return { ja: '', ko: '', en: '' };
+  }
+
   const [translatedKo, translatedEn] = await Promise.all([
-    translateWithDeepL(original, 'KO', dateKey),
-    translateWithDeepL(original, 'EN', dateKey),
+    translateText(original, 'ko', dateKey),
+    translateText(original, 'en', dateKey),
   ]);
-  const cleanKo =
-    translatedKo && !containsJapanese(translatedKo)
-      ? cleanWhitespace(translatedKo)
-      : null;
-  const cleanEn =
-    translatedEn && !containsJapanese(translatedEn)
-      ? cleanWhitespace(translatedEn)
-      : null;
-  const fallbackKoRaw = translateJaToKoFallback(original);
-  const fallbackEnRaw = translateJaToEnFallback(original);
-  const fallbackKo =
-    fallbackKoRaw && !containsJapanese(fallbackKoRaw)
-      ? cleanWhitespace(fallbackKoRaw)
-      : null;
-  const fallbackEn =
-    fallbackEnRaw && !containsJapanese(fallbackEnRaw)
-      ? cleanWhitespace(fallbackEnRaw)
-      : null;
+
+  const cleanKo = translatedKo && !containsJapanese(translatedKo)
+    ? cleanWhitespace(translatedKo)
+    : '';
+  const cleanEn = translatedEn && !containsJapanese(translatedEn)
+    ? cleanWhitespace(translatedEn)
+    : '';
+
+  const fallbackKo = translateJaToKoFallback(original);
+  const fallbackEn = translateJaToEnFallback(original);
 
   if (translatedKo && !cleanKo) {
     console.error('[api/ohaasa] Korean translation still contains Japanese', {
@@ -492,6 +364,53 @@ async function translateWithFallback(text, dateKey) {
   };
 }
 
+async function translateText(text, targetLang, dateKey) {
+  const original = cleanWhitespace(text);
+  if (!original) {
+    return '';
+  }
+
+  const cacheKey = cacheKeyForTranslation({ dateKey, targetLang, text: original });
+  if (dailyTranslationCache.has(cacheKey)) {
+    return dailyTranslationCache.get(cacheKey);
+  }
+
+  try {
+    const translationUrl = new URL('https://translate.googleapis.com/translate_a/single');
+    translationUrl.searchParams.set('client', 'gtx');
+    translationUrl.searchParams.set('sl', 'ja');
+    translationUrl.searchParams.set('tl', targetLang);
+    translationUrl.searchParams.set('dt', 't');
+    translationUrl.searchParams.set('q', original);
+
+    const response = await fetch(translationUrl, {
+      headers: { 'user-agent': 'morning-ohasa-vercel/1.0' },
+    });
+
+    if (!response.ok) {
+      return '';
+    }
+
+    const payload = await response.json();
+    const translated = Array.isArray(payload?.[0])
+      ? payload[0]
+        .map((part) => Array.isArray(part) ? String(part[0] ?? '') : '')
+        .join('')
+      : '';
+
+    const normalized = cleanWhitespace(translated);
+    dailyTranslationCache.set(cacheKey, normalized);
+    return normalized;
+  } catch (error) {
+    console.error('[api/ohaasa] translation request failed', {
+      targetLang,
+      dateKey,
+      error: String(error),
+    });
+    return '';
+  }
+}
+
 function finalizeTranslationTone(translations, { isAction = false } = {}) {
   return {
     ja: formatForMobile(translations.ja),
@@ -502,15 +421,6 @@ function finalizeTranslationTone(translations, { isAction = false } = {}) {
       ? postProcessEnglish(translations.en, { isAction })
       : '',
   };
-}
-
-function formatDate(rawDate) {
-  const normalized = normalizeDateKey(rawDate);
-  if (!normalized) {
-    return null;
-  }
-
-  return normalized;
 }
 
 function normalizeDateKey(rawDate) {
@@ -526,75 +436,126 @@ function normalizeDateKey(rawDate) {
   return null;
 }
 
-function dedupePayloadByDate(payload) {
-  const deduped = new Map();
-
-  for (const item of payload) {
-    const normalizedDate = normalizeDateKey(item?.onair_date);
-    if (!normalizedDate) {
-      continue;
-    }
-
-    const existing = deduped.get(normalizedDate);
-    const currentId = Number(item?.horoscope_id ?? 0);
-    const existingId = Number(existing?.horoscope_id ?? 0);
-
-    if (!existing || currentId >= existingId) {
-      deduped.set(normalizedDate, item);
-    }
-  }
-
-  return [...deduped.values()];
+function formatDate(rawDate) {
+  return normalizeDateKey(rawDate);
 }
 
-function dedupeRankings(rankings) {
-  const deduped = new Map();
-
-  for (const ranking of rankings) {
-    const key = ranking?.zodiacKey;
-    if (!key) {
-      continue;
-    }
-
-    const existing = deduped.get(key);
-    if (!existing || Number(ranking.rank) < Number(existing.rank)) {
-      deduped.set(key, ranking);
-    }
-  }
-
-  return [...deduped.values()].sort((a, b) => a.rank - b.rank);
-}
-
-function parseHoroscopeText(rawText) {
-  const parts = String(rawText ?? '')
-    .split('\t')
-    .map((part) => part.trim())
+function htmlToLines(html) {
+  return decodeHtmlEntities(
+    String(html ?? '')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '\n')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '\n')
+      .replace(/<!--[\s\S]*?-->/g, '\n')
+      .replace(/<\/(p|div|section|article|li|ul|ol|h1|h2|h3|h4|h5|h6|dt|dd|br)>/gi, '\n')
+      .replace(/<[^>]+>/g, '\n'),
+  )
+    .split('\n')
+    .map((line) => cleanWhitespace(line))
     .filter(Boolean);
-
-  if (parts.length === 0) {
-    return { message: '', action: '' };
-  }
-
-  if (parts.length === 1) {
-    return { message: parts[0], action: '' };
-  }
-
-  return {
-    message: parts.slice(0, -1).join('\n'),
-    action: parts.at(-1) ?? '',
-  };
 }
 
-async function normalizeRanking(detail, dateKey) {
-  const zodiac = ZODIAC_BY_STATUS[String(detail.horoscope_st).padStart(2, '0')];
-  if (!zodiac) {
-    return null;
+function extractPageDate(lines) {
+  for (const line of lines) {
+    const match = line.match(/^(\d{1,2})月(\d{1,2})日（[^）]+）の占い$/);
+    if (!match) {
+      continue;
+    }
+
+    const now = new Date();
+    const year = String(now.getFullYear());
+    const month = match[1].padStart(2, '0');
+    const day = match[2].padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
-  const parsed = parseHoroscopeText(detail.horoscope_text);
+  return null;
+}
+
+function extractRankingOrder(lines) {
+  const startIndex = lines.findIndex((line) => /の占い$/.test(line));
+  const endIndex = lines.findIndex((line) => /のナンバーワン$/.test(line));
+  const slice = lines.slice(
+    startIndex >= 0 ? startIndex + 1 : 0,
+    endIndex >= 0 ? endIndex : lines.length,
+  );
+  const rankedNames = [];
+  const seen = new Set();
+
+  for (const line of slice) {
+    if (!ZODIAC_NAME_PATTERN.test(line) || seen.has(line)) {
+      continue;
+    }
+
+    seen.add(line);
+    rankedNames.push(line);
+
+    if (rankedNames.length === ZODIACS.length) {
+      break;
+    }
+  }
+
+  if (rankedNames.length !== ZODIACS.length) {
+    throw new Error(`ranking_order_parse_failed:${rankedNames.length}`);
+  }
+
+  return rankedNames;
+}
+
+function extractDetailSections(lines) {
+  const sections = new Map();
+  let currentSection = null;
+
+  for (const line of lines) {
+    const headingMatch = line.match(ZODIAC_SECTION_PATTERN);
+    if (headingMatch) {
+      const zodiacJa = headingMatch[1];
+      currentSection = {
+        zodiacJa,
+        message: '',
+        luckyColor: '',
+        action: '',
+      };
+      sections.set(zodiacJa, currentSection);
+      continue;
+    }
+
+    if (!currentSection) {
+      continue;
+    }
+
+    if (!currentSection.message &&
+        !line.startsWith('ラッキーカラー：') &&
+        !line.startsWith('幸運のカギ：') &&
+        !/今日の順位/.test(line) &&
+        !ZODIAC_NAME_PATTERN.test(line)) {
+      currentSection.message = line;
+      continue;
+    }
+
+    if (line.startsWith('ラッキーカラー：')) {
+      currentSection.luckyColor = line.replace('ラッキーカラー：', '').trim();
+      continue;
+    }
+
+    if (line.startsWith('幸運のカギ：')) {
+      currentSection.action = line.replace('幸運のカギ：', '').trim();
+    }
+  }
+
+  return sections;
+}
+
+async function normalizeRanking({
+  rank,
+  zodiac,
+  detailSection,
+  dateKey,
+}) {
+  const rawMessage = detailSection?.message ?? '';
+  const rawAction = detailSection?.action || detailSection?.luckyColor || '';
   const [rawMessageTranslations, rawActionTranslations] = await Promise.all([
-    translateWithFallback(parsed.message, dateKey),
-    translateWithFallback(parsed.action, dateKey),
+    translateWithFallback(rawMessage, dateKey),
+    translateWithFallback(rawAction, dateKey),
   ]);
   const messageTranslations = finalizeTranslationTone(rawMessageTranslations);
   const actionTranslations = finalizeTranslationTone(rawActionTranslations, {
@@ -602,7 +563,7 @@ async function normalizeRanking(detail, dateKey) {
   });
 
   return {
-    rank: Number(detail.ranking_no),
+    rank,
     zodiacKey: zodiac.zodiacKey,
     zodiacJa: zodiac.zodiacJa,
     zodiacKo: zodiac.zodiacKo,
@@ -615,16 +576,6 @@ async function normalizeRanking(detail, dateKey) {
   };
 }
 
-function latestEntryFromPayload(payload) {
-  if (!Array.isArray(payload) || payload.length === 0) {
-    return null;
-  }
-
-  return [...payload].sort((a, b) => {
-    return String(b?.onair_date ?? '').localeCompare(String(a?.onair_date ?? ''));
-  })[0];
-}
-
 module.exports = async function handler(request, response) {
   if (request.method !== 'GET') {
     return response.status(405).json({
@@ -634,110 +585,66 @@ module.exports = async function handler(request, response) {
 
   try {
     const fetchTimestamp = new Date().toISOString();
-    console.info('[api/ohaasa] fetching official page and data', {
+    console.info('[api/ohaasa] fetching tv-asahi source page', {
       fetchTimestamp,
+      sourcePageUrl: TV_ASAHI_URANAI_URL,
     });
 
-    const [pageResponse, dataResponse] = await Promise.all([
-      fetch(OHAASA_PAGE_URL, {
-        headers: { 'user-agent': 'morning-ohasa-vercel/1.0' },
-      }),
-      fetch(OHAASA_DATA_URL, {
-        headers: { accept: 'application/json', 'user-agent': 'morning-ohasa-vercel/1.0' },
-      }),
-    ]);
+    const pageResponse = await fetch(TV_ASAHI_URANAI_URL, {
+      headers: { 'user-agent': 'morning-ohasa-vercel/1.0' },
+    });
 
     if (!pageResponse.ok) {
-      console.error('[api/ohaasa] page fetch failed', pageResponse.status);
+      console.error('[api/ohaasa] source page fetch failed', pageResponse.status);
       return response.status(502).json({
         error: 'source_page_fetch_failed',
-        source: 'ohaasa',
+        source: 'tv-asahi-goodmorning',
       });
     }
 
-    if (!dataResponse.ok) {
-      console.error('[api/ohaasa] data fetch failed', dataResponse.status);
-      return response.status(502).json({
-        error: 'source_data_fetch_failed',
-        source: 'ohaasa',
-      });
+    const pageHtml = await pageResponse.text();
+    const lines = htmlToLines(pageHtml);
+    const pageDate = extractPageDate(lines);
+    const rankingOrder = extractRankingOrder(lines);
+    const detailSections = extractDetailSections(lines);
+
+    if (!pageDate) {
+      throw new Error('source_date_parse_failed');
     }
 
-    const [pageHtml, payload] = await Promise.all([
-      pageResponse.text(),
-      dataResponse.json(),
-    ]);
+    const rankings = await Promise.all(
+      rankingOrder.map((zodiacJa, index) => {
+        const zodiac = ZODIAC_BY_JA.get(zodiacJa);
+        if (!zodiac) {
+          throw new Error(`unknown_zodiac:${zodiacJa}`);
+        }
 
-    if (!pageHtml.includes('今日の星占いランキング')) {
-      console.error('[api/ohaasa] unexpected page markup');
-      return response.status(502).json({
-        error: 'source_page_parse_failed',
-        source: 'ohaasa',
-      });
-    }
+        return normalizeRanking({
+          rank: index + 1,
+          zodiac,
+          detailSection: detailSections.get(zodiacJa),
+          dateKey: pageDate,
+        });
+      }),
+    );
 
-    const dedupedPayload = dedupePayloadByDate(payload);
-    const latestEntry = latestEntryFromPayload(dedupedPayload);
-    if (!latestEntry || !Array.isArray(latestEntry.detail)) {
-      console.error('[api/ohaasa] no ranking detail found');
-      return response.status(502).json({
-        error: 'source_data_parse_failed',
-        source: 'ohaasa',
-      });
-    }
-
-    const sourceDates = [...new Set(
-      payload.map((item) => String(item?.onair_date ?? 'unknown')),
-    )];
-    const sameDayEntries = payload.filter(
-      (item) => String(item?.onair_date ?? '') === String(latestEntry.onair_date ?? ''),
-    ).length;
-    console.info('[api/ohaasa] source audit', {
+    console.info('[api/ohaasa] source ranking order', {
       fetchTimestamp,
-      payloadCount: Array.isArray(payload) ? payload.length : 0,
-      dedupedPayloadCount: dedupedPayload.length,
-      sourceDates,
-      selectedSourceDate: String(latestEntry.onair_date ?? ''),
-      sameDayEntries,
-    });
-
-    const rankings = dedupeRankings((
-      await Promise.all(
-        latestEntry.detail.map((detail) =>
-          normalizeRanking(detail, String(latestEntry.onair_date ?? 'unknown')),
-        ),
-      )
-    ).filter(Boolean));
-
-    if (rankings.length === 0) {
-      console.error('[api/ohaasa] normalized ranking list is empty');
-      return response.status(502).json({
-        error: 'source_data_parse_failed',
-        source: 'ohaasa',
-      });
-    }
-
-    console.info('[api/ohaasa] response audit', {
-      fetchTimestamp,
-      sourceDate: String(latestEntry.onair_date ?? ''),
-      parsedDate: formatDate(latestEntry.onair_date),
-      rankingCount: rankings.length,
-      firstRank: rankings[0]?.rank,
-      firstZodiacKey: rankings[0]?.zodiacKey,
+      sourceDate: pageDate,
+      sourceRankings: rankings.map((ranking) => `${ranking.rank}:${ranking.zodiacKey}`),
     });
 
     return response.status(200).json({
-      date: formatDate(latestEntry.onair_date),
-      source: 'ohaasa',
-      sourcePageUrl: OHAASA_PAGE_URL,
-      sourceDataUrl: OHAASA_DATA_URL,
+      date: formatDate(pageDate),
+      source: 'tv-asahi-goodmorning',
+      sourcePageUrl: TV_ASAHI_URANAI_URL,
       rankings,
     });
   } catch (error) {
     console.error('[api/ohaasa] unexpected failure', error);
     return response.status(500).json({
       error: 'internal_error',
-      source: 'ohaasa',
+      source: 'tv-asahi-goodmorning',
     });
   }
 };
