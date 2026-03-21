@@ -4,6 +4,7 @@ class ShareCard extends StatelessWidget {
   const ShareCard({
     super.key,
     required this.zodiacName,
+    required this.isEnglish,
     required this.zodiacIcon,
     required this.rank,
     required this.message,
@@ -18,6 +19,7 @@ class ShareCard extends StatelessWidget {
   });
 
   final String zodiacName;
+  final bool isEnglish;
   final IconData zodiacIcon;
   final int rank;
   final String message;
@@ -84,7 +86,9 @@ class ShareCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '$zodiacName 오늘 $rank위',
+                      isEnglish
+                          ? '$zodiacName today #$rank'
+                          : '$zodiacName 오늘 $rank위',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
@@ -94,7 +98,7 @@ class ShareCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '오늘의 오하아사',
+                      isEnglish ? 'Today\'s Ohasa' : '오늘의 오하아사',
                       style: TextStyle(
                         fontSize: 13,
                         color: textSecondary,
@@ -116,7 +120,7 @@ class ShareCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
-                '오늘의 한마디',
+                isEnglish ? 'Today\'s Message' : '오늘의 한마디',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
@@ -142,7 +146,7 @@ class ShareCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _InfoBox(
-                  label: '오늘 점수',
+                  label: isEnglish ? 'Today\'s Score' : '오늘 점수',
                   value: '$score',
                   accentSoft: accentSoft,
                   textPrimary: textPrimary,
@@ -152,7 +156,7 @@ class ShareCard extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: _InfoBox(
-                  label: '추천 행동',
+                  label: isEnglish ? 'Suggested Action' : '추천 행동',
                   value: action,
                   accentSoft: accentSoft,
                   textPrimary: textPrimary,
@@ -163,7 +167,9 @@ class ShareCard extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(
-            'Morning Ohasa ✦ 오늘의 운세를 저장해보세요',
+            isEnglish
+                ? 'Morning Ohasa ✦ Save today\'s result'
+                : 'Morning Ohasa ✦ 오늘의 운세를 저장해보세요',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,

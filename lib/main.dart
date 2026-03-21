@@ -28,6 +28,7 @@ const String zodiacPreferenceKey = 'selected_zodiac_key';
 const String appThemePreferenceKey = 'selected_app_theme';
 const String appLanguagePreferenceKey = 'selected_app_language';
 const String appFontPreferenceKey = 'selected_app_font';
+const String appTextSizePreferenceKey = 'selected_app_text_size';
 const String notificationEnabledPreferenceKey = 'notification_enabled';
 const String notificationHourPreferenceKey = 'notification_hour';
 const String notificationMinutePreferenceKey = 'notification_minute';
@@ -41,24 +42,33 @@ const String horoscopeEmojiPreferenceKey = 'daily_horoscope_emoji';
 const String horoscopeCacheSourcePreferenceKey = 'daily_horoscope_cache_source';
 const String horoscopeRemoteRankingsPreferenceKey =
     'daily_horoscope_remote_rankings';
+const String horoscopeLanguagePreferenceKey = 'daily_horoscope_language';
 const String horoscopeCacheSourceVersion = 'tv-asahi-goodmorning-v1';
 final ValueNotifier<String> appFontKeyNotifier = ValueNotifier<String>(
   'notoSansKr',
 );
+final ValueNotifier<String> appTextSizeKeyNotifier = ValueNotifier<String>(
+  'default',
+);
+
+enum AppLanguage {
+  ko,
+  en,
+}
 
 const Map<String, ZodiacMeta> zodiacMeta = <String, ZodiacMeta>{
-  'aries': ZodiacMeta(nameKo: '양자리', emoji: '♈️'),
-  'taurus': ZodiacMeta(nameKo: '황소자리', emoji: '♉️'),
-  'gemini': ZodiacMeta(nameKo: '쌍둥이자리', emoji: '♊️'),
-  'cancer': ZodiacMeta(nameKo: '게자리', emoji: '♋️'),
-  'leo': ZodiacMeta(nameKo: '사자자리', emoji: '♌️'),
-  'virgo': ZodiacMeta(nameKo: '처녀자리', emoji: '♍️'),
-  'libra': ZodiacMeta(nameKo: '천칭자리', emoji: '♎️'),
-  'scorpio': ZodiacMeta(nameKo: '전갈자리', emoji: '♏️'),
-  'sagittarius': ZodiacMeta(nameKo: '사수자리', emoji: '♐️'),
-  'capricorn': ZodiacMeta(nameKo: '염소자리', emoji: '♑️'),
-  'aquarius': ZodiacMeta(nameKo: '물병자리', emoji: '♒️'),
-  'pisces': ZodiacMeta(nameKo: '물고기자리', emoji: '♓️'),
+  'aries': ZodiacMeta(nameKo: '양자리', nameEn: 'Aries', emoji: '♈️'),
+  'taurus': ZodiacMeta(nameKo: '황소자리', nameEn: 'Taurus', emoji: '♉️'),
+  'gemini': ZodiacMeta(nameKo: '쌍둥이자리', nameEn: 'Gemini', emoji: '♊️'),
+  'cancer': ZodiacMeta(nameKo: '게자리', nameEn: 'Cancer', emoji: '♋️'),
+  'leo': ZodiacMeta(nameKo: '사자자리', nameEn: 'Leo', emoji: '♌️'),
+  'virgo': ZodiacMeta(nameKo: '처녀자리', nameEn: 'Virgo', emoji: '♍️'),
+  'libra': ZodiacMeta(nameKo: '천칭자리', nameEn: 'Libra', emoji: '♎️'),
+  'scorpio': ZodiacMeta(nameKo: '전갈자리', nameEn: 'Scorpio', emoji: '♏️'),
+  'sagittarius': ZodiacMeta(nameKo: '사수자리', nameEn: 'Sagittarius', emoji: '♐️'),
+  'capricorn': ZodiacMeta(nameKo: '염소자리', nameEn: 'Capricorn', emoji: '♑️'),
+  'aquarius': ZodiacMeta(nameKo: '물병자리', nameEn: 'Aquarius', emoji: '♒️'),
+  'pisces': ZodiacMeta(nameKo: '물고기자리', nameEn: 'Pisces', emoji: '♓️'),
 };
 
 IconData zodiacIconData(String zodiacKey) {
@@ -286,26 +296,45 @@ Future<void> main() async {
   await LocalNotificationService.instance.initialize();
   final preferences = await SharedPreferences.getInstance();
   final savedZodiacKey = preferences.getString(zodiacPreferenceKey);
+  final savedLanguageCode =
+      preferences.getString(appLanguagePreferenceKey) ?? 'ko';
   final savedFontKey =
       preferences.getString(appFontPreferenceKey) ?? appFontKeyNotifier.value;
+  final savedTextSizeKey =
+      preferences.getString(appTextSizePreferenceKey) ??
+      appTextSizeKeyNotifier.value;
   appFontKeyNotifier.value =
       appFontOptions.containsKey(savedFontKey)
           ? savedFontKey
           : appFontKeyNotifier.value;
+  appTextSizeKeyNotifier.value =
+      appTextSizeOptions.containsKey(savedTextSizeKey)
+          ? savedTextSizeKey
+          : appTextSizeKeyNotifier.value;
   final initialDailyHoroscopeResult =
       savedZodiacKey == null
           ? null
           : loadInitialDailyHoroscopeResult(
               preferences: preferences,
               zodiacKey: savedZodiacKey,
+              languageCode: savedLanguageCode,
             );
 
   runApp(
     MorningOhasaApp(
       initialZodiacKey: savedZodiacKey,
+      initialLanguageCode: savedLanguageCode,
       initialDailyHoroscopeResult: initialDailyHoroscopeResult,
     ),
   );
+}
+
+AppLanguage appLanguageFromCode(String? code) {
+  return code == 'en' ? AppLanguage.en : AppLanguage.ko;
+}
+
+String appLanguageCode(AppLanguage language) {
+  return language == AppLanguage.en ? 'en' : 'ko';
 }
 
 String normalizeDailyDateKey(String? rawDate) {
@@ -361,16 +390,19 @@ Map<String, Map<String, dynamic>> decodeCachedRemoteRankings(String? raw) {
 Map<String, dynamic>? loadInitialDailyHoroscopeResult({
   required SharedPreferences preferences,
   required String zodiacKey,
+  required String languageCode,
 }) {
   final savedCacheSource = preferences.getString(
     horoscopeCacheSourcePreferenceKey,
   );
+  final savedLanguageCode = preferences.getString(horoscopeLanguagePreferenceKey);
   final savedDate = normalizeDailyDateKey(
     preferences.getString(horoscopeDatePreferenceKey),
   );
   final savedZodiacKey = preferences.getString(horoscopeZodiacPreferenceKey);
 
   if (savedCacheSource != horoscopeCacheSourceVersion ||
+      savedLanguageCode != languageCode ||
       savedDate != currentDailyDateKey() ||
       savedZodiacKey != zodiacKey) {
     return null;
@@ -408,11 +440,17 @@ Map<String, dynamic>? loadInitialDailyHoroscopeResult({
 class ZodiacMeta {
   const ZodiacMeta({
     required this.nameKo,
+    required this.nameEn,
     required this.emoji,
   });
 
   final String nameKo;
+  final String nameEn;
   final String emoji;
+
+  String nameFor(AppLanguage language) {
+    return language == AppLanguage.en ? nameEn : nameKo;
+  }
 }
 
 class AppThemeColors {
@@ -460,6 +498,20 @@ class AppFontOption {
   final String preview;
 }
 
+class AppTextSizeOption {
+  const AppTextSizeOption({
+    required this.key,
+    required this.labelKo,
+    required this.labelEn,
+    required this.scale,
+  });
+
+  final String key;
+  final String labelKo;
+  final String labelEn;
+  final double scale;
+}
+
 const Map<String, AppFontOption> appFontOptions = <String, AppFontOption>{
   'notoSansKr': AppFontOption(
     key: 'notoSansKr',
@@ -488,20 +540,75 @@ const Map<String, AppFontOption> appFontOptions = <String, AppFontOption>{
   ),
 };
 
-TextTheme buildAppTextTheme(String fontKey, TextTheme base) {
-  switch (fontKey) {
-    case 'gaegu':
-      return GoogleFonts.gaeguTextTheme(base);
-    case 'jua':
-      return GoogleFonts.juaTextTheme(base);
-    case 'gowunDodum':
-      return GoogleFonts.gowunDodumTextTheme(base);
-    case 'nanumMyeongjo':
-      return GoogleFonts.nanumMyeongjoTextTheme(base);
-    case 'notoSansKr':
-    default:
-      return GoogleFonts.notoSansKrTextTheme(base);
+const Map<String, AppTextSizeOption> appTextSizeOptions =
+    <String, AppTextSizeOption>{
+      'small': AppTextSizeOption(
+        key: 'small',
+        labelKo: '작게',
+        labelEn: 'Small',
+        scale: 0.92,
+      ),
+      'default': AppTextSizeOption(
+        key: 'default',
+        labelKo: '기본',
+        labelEn: 'Default',
+        scale: 1.0,
+      ),
+      'large': AppTextSizeOption(
+        key: 'large',
+        labelKo: '크게',
+        labelEn: 'Large',
+        scale: 1.1,
+      ),
+    };
+
+TextTheme _scaleTextTheme(TextTheme theme, double scale) {
+  TextStyle? scaleStyle(TextStyle? style) {
+    if (style == null) {
+      return null;
+    }
+
+    return style.copyWith(
+      fontSize: style.fontSize == null ? null : style.fontSize! * scale,
+      letterSpacing: style.letterSpacing == null
+          ? null
+          : style.letterSpacing! * scale,
+    );
   }
+
+  return theme.copyWith(
+    displayLarge: scaleStyle(theme.displayLarge),
+    displayMedium: scaleStyle(theme.displayMedium),
+    displaySmall: scaleStyle(theme.displaySmall),
+    headlineLarge: scaleStyle(theme.headlineLarge),
+    headlineMedium: scaleStyle(theme.headlineMedium),
+    headlineSmall: scaleStyle(theme.headlineSmall),
+    titleLarge: scaleStyle(theme.titleLarge),
+    titleMedium: scaleStyle(theme.titleMedium),
+    titleSmall: scaleStyle(theme.titleSmall),
+    bodyLarge: scaleStyle(theme.bodyLarge),
+    bodyMedium: scaleStyle(theme.bodyMedium),
+    bodySmall: scaleStyle(theme.bodySmall),
+    labelLarge: scaleStyle(theme.labelLarge),
+    labelMedium: scaleStyle(theme.labelMedium),
+    labelSmall: scaleStyle(theme.labelSmall),
+  );
+}
+
+TextTheme buildAppTextTheme(
+  String fontKey,
+  TextTheme base, {
+  double scale = 1,
+}) {
+  final themed = switch (fontKey) {
+    'gaegu' => GoogleFonts.gaeguTextTheme(base),
+    'jua' => GoogleFonts.juaTextTheme(base),
+    'gowunDodum' => GoogleFonts.gowunDodumTextTheme(base),
+    'nanumMyeongjo' => GoogleFonts.nanumMyeongjoTextTheme(base),
+    'notoSansKr' || _ => GoogleFonts.notoSansKrTextTheme(base),
+  };
+
+  return _scaleTextTheme(themed, scale);
 }
 
 class LocalNotificationService {
@@ -626,10 +733,12 @@ class MorningOhasaApp extends StatelessWidget {
   const MorningOhasaApp({
     super.key,
     this.initialZodiacKey,
+    required this.initialLanguageCode,
     this.initialDailyHoroscopeResult,
   });
 
   final String? initialZodiacKey;
+  final String initialLanguageCode;
   final Map<String, dynamic>? initialDailyHoroscopeResult;
 
   @override
@@ -637,30 +746,45 @@ class MorningOhasaApp extends StatelessWidget {
     return ValueListenableBuilder<String>(
       valueListenable: appFontKeyNotifier,
       builder: (BuildContext context, String fontKey, Widget? child) {
-        final baseTheme = ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF7C5CFA),
-          ),
-        );
+        return ValueListenableBuilder<String>(
+          valueListenable: appTextSizeKeyNotifier,
+          builder: (BuildContext context, String textSizeKey, Widget? child) {
+            final baseTheme = ThemeData(
+              useMaterial3: true,
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: const Color(0xFF7C5CFA),
+              ),
+            );
+            final textScale =
+                appTextSizeOptions[textSizeKey]?.scale ??
+                appTextSizeOptions['default']!.scale;
 
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'Morning Ohasa',
-          theme: baseTheme.copyWith(
-            textTheme: buildAppTextTheme(fontKey, baseTheme.textTheme),
-            primaryTextTheme: buildAppTextTheme(
-              fontKey,
-              baseTheme.primaryTextTheme,
-            ),
-          ),
-          home:
-              initialZodiacKey == null
-                  ? const ZodiacSelectionScreen()
-                  : HomeScreen(
-                      zodiacKey: initialZodiacKey!,
-                      initialDailyHoroscopeResult: initialDailyHoroscopeResult,
-                    ),
+            return MaterialApp(
+              debugShowCheckedModeBanner: false,
+              title: 'Morning Ohasa',
+              theme: baseTheme.copyWith(
+                textTheme: buildAppTextTheme(
+                  fontKey,
+                  baseTheme.textTheme,
+                  scale: textScale,
+                ),
+                primaryTextTheme: buildAppTextTheme(
+                  fontKey,
+                  baseTheme.primaryTextTheme,
+                  scale: textScale,
+                ),
+              ),
+              home:
+                  initialZodiacKey == null
+                      ? const ZodiacSelectionScreen()
+                      : HomeScreen(
+                          zodiacKey: initialZodiacKey!,
+                          initialLanguageCode: initialLanguageCode,
+                          initialDailyHoroscopeResult:
+                              initialDailyHoroscopeResult,
+                        ),
+            );
+          },
         );
       },
     );
@@ -671,10 +795,12 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.zodiacKey,
+    this.initialLanguageCode = 'ko',
     this.initialDailyHoroscopeResult,
   });
 
   final String zodiacKey;
+  final String initialLanguageCode;
   final Map<String, dynamic>? initialDailyHoroscopeResult;
 
   @override
@@ -693,12 +819,13 @@ class _HomeScreenState extends State<HomeScreen> {
       <String, Map<String, dynamic>>{};
   bool _isDailyHoroscopeLoading = true;
   String _selectedThemeKey = 'lavenderPink';
-  String _selectedLanguageCode = 'ko';
+  late String _selectedLanguageCode = widget.initialLanguageCode;
   String _selectedFontKey = appFontKeyNotifier.value;
   bool _notificationsEnabled = false;
   TimeOfDay _notificationTime = const TimeOfDay(hour: 7, minute: 0);
   String? _interactiveMessageOverride;
   bool _cardsVisible = false;
+  String _selectedTextSizeKey = appTextSizeKeyNotifier.value;
   late final List<double> _sparkleJitter = List<double>.generate(
     9,
     (_) => (Random().nextDouble() * 2) - 1,
@@ -708,6 +835,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appThemes[_selectedThemeKey] ?? appThemes['lavenderPink']!;
   bool get _isDarkTheme => _theme.isDark;
   bool get _isEnglish => _selectedLanguageCode == 'en';
+  AppLanguage get _language => appLanguageFromCode(_selectedLanguageCode);
   Color get _backgroundColor => _theme.background;
   Color get _cardStart => _theme.cardGradientStart;
   Color get _cardEnd => _theme.cardGradientEnd;
@@ -893,6 +1021,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadSavedTheme();
     _loadSavedLanguage();
     _loadSavedFont();
+    _loadSavedTextSize();
     _loadNotificationSettings();
     _loadOrCreateDailyHoroscope();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -964,6 +1093,28 @@ class _HomeScreenState extends State<HomeScreen> {
     appFontKeyNotifier.value = fontKey;
   }
 
+  Future<void> _loadSavedTextSize() async {
+    final preferences = await SharedPreferences.getInstance();
+    final savedTextSizeKey =
+        preferences.getString(appTextSizePreferenceKey) ??
+        appTextSizeKeyNotifier.value;
+
+    if (!mounted || !appTextSizeOptions.containsKey(savedTextSizeKey)) {
+      return;
+    }
+
+    setState(() {
+      _selectedTextSizeKey = savedTextSizeKey;
+    });
+    appTextSizeKeyNotifier.value = savedTextSizeKey;
+  }
+
+  Future<void> _saveTextSize(String textSizeKey) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(appTextSizePreferenceKey, textSizeKey);
+    appTextSizeKeyNotifier.value = textSizeKey;
+  }
+
   Future<void> _loadNotificationSettings() async {
     final preferences = await SharedPreferences.getInstance();
     final savedEnabled =
@@ -1019,10 +1170,24 @@ class _HomeScreenState extends State<HomeScreen> {
         salt;
   }
 
-  String _pickDailyMessage() {
-    final specificMessages = zodiacSpecificMessages[widget.zodiacKey] ?? const <String>[];
+  List<String> _todayMessagesFor(AppLanguage language) {
+    return todayMessagesByLanguage[appLanguageCode(language)] ?? const <String>[];
+  }
+
+  List<String> _zodiacMessagesFor(AppLanguage language, String zodiacKey) {
+    return zodiacSpecificMessagesByLanguage[appLanguageCode(language)]?[zodiacKey] ??
+        const <String>[];
+  }
+
+  List<String> _actionRecommendationsFor(AppLanguage language) {
+    return actionRecommendationsByLanguage[appLanguageCode(language)] ??
+        const <String>[];
+  }
+
+  String _pickDailyMessage({required AppLanguage language}) {
+    final specificMessages = _zodiacMessagesFor(language, widget.zodiacKey);
     final messagePool = <String>[
-      ...todayMessages,
+      ..._todayMessagesFor(language),
       ...specificMessages,
     ];
     final random = Random(_dailySeed(salt: 11));
@@ -1035,8 +1200,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _interactiveMessageOverride ?? _currentDisplayResult['rawMessage'],
         );
     final candidates = <String>[
-      ...todayMessages,
-      ...(zodiacSpecificMessages[widget.zodiacKey] ?? const <String>[]),
+      ..._todayMessagesFor(_language),
+      ..._zodiacMessagesFor(_language, widget.zodiacKey),
     ].map(_normalizeDisplayText).where((String item) => item.isNotEmpty).toSet().toList();
 
     if (currentMessage.isNotEmpty && !candidates.contains(currentMessage)) {
@@ -1057,6 +1222,7 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final rawCandidate in rawCandidates) {
       final displayMessage =
           _buildDisplayCopy(
+            language: _language,
             rawMessage: rawCandidate,
             rawAction: rawAction,
             rank: rank,
@@ -1155,10 +1321,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  String _pickDailyAction() {
+  String _pickDailyAction({required AppLanguage language}) {
     final random = Random(_dailySeed(salt: 29));
-    return actionRecommendations[
-      random.nextInt(actionRecommendations.length)
+    final recommendations = _actionRecommendationsFor(language);
+    return recommendations[
+      random.nextInt(recommendations.length)
     ];
   }
 
@@ -1169,9 +1336,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final result = <String, dynamic>{
       'date': _todayString(),
       'zodiacKey': widget.zodiacKey,
-      'message': _pickDailyMessage(),
+      'message': _pickDailyMessage(language: _language),
       'score': selectedItem['score'],
-      'action': _pickDailyAction(),
+      'action': _pickDailyAction(language: _language),
       'rank': _currentZodiacRank,
       'emoji': selectedItem['emoji'],
     };
@@ -1245,54 +1412,187 @@ class _HomeScreenState extends State<HomeScreen> {
         .trim();
   }
 
-  String _fallbackKoreanMessageText() {
-    final candidate = _normalizeDisplayText(_pickDailyMessage());
-    return candidate.isEmpty ? '오늘은 무리하지 않고 내 페이스로 가도 좋아' : candidate;
+  String _fallbackMessageText(AppLanguage language) {
+    final candidate = _normalizeDisplayText(_pickDailyMessage(language: language));
+    if (candidate.isNotEmpty) {
+      return candidate;
+    }
+    return language == AppLanguage.en
+        ? 'Take it at your own pace today.'
+        : '오늘은 무리하지 않고 내 페이스로 가도 좋아';
   }
 
-  String _fallbackKoreanActionText() {
-    final candidate = _normalizeDisplayText(_pickDailyAction());
-    return candidate.isEmpty ? '물 한 잔 마시기' : candidate;
+  String _fallbackActionText(AppLanguage language) {
+    final candidate = _normalizeDisplayText(_pickDailyAction(language: language));
+    if (candidate.isNotEmpty) {
+      return candidate;
+    }
+    return language == AppLanguage.en ? 'Drink some water first' : '물 한 잔 마시기';
   }
 
-  String _sanitizeMessageForKoreanDisplay(
+  bool _isUsableLocalizedText(
+    String localized,
+    String original, {
+    required AppLanguage language,
+  }) {
+    if (localized.isEmpty || localized == original) {
+      return false;
+    }
+    if (_containsJapanese(localized)) {
+      return false;
+    }
+    return true;
+  }
+
+  String _sanitizeLocalizedMessage(
     dynamic localizedText, {
     dynamic originalText,
+    required AppLanguage language,
   }) {
     final localized = _normalizeDisplayText(localizedText);
     final original = _normalizeDisplayText(originalText);
 
-    if (localized.isNotEmpty &&
-        !_containsJapanese(localized) &&
-        localized != original) {
+    if (_isUsableLocalizedText(localized, original, language: language)) {
       return localized;
     }
 
     debugPrint(
-      '[translation-audit] message sanitized to Korean fallback | '
+      '[translation-audit] message sanitized to language fallback | '
+      'language=${appLanguageCode(language)} | '
       'localized="$localized" | original="$original"',
     );
-    return _fallbackKoreanMessageText();
+    return _fallbackMessageText(language);
   }
 
-  String _sanitizeActionForKoreanDisplay(
+  String _sanitizeLocalizedAction(
     dynamic localizedText, {
     dynamic originalText,
+    required AppLanguage language,
   }) {
     final localized = _normalizeDisplayText(localizedText);
     final original = _normalizeDisplayText(originalText);
 
-    if (localized.isNotEmpty &&
-        !_containsJapanese(localized) &&
-        localized != original) {
+    if (_isUsableLocalizedText(localized, original, language: language)) {
       return localized;
     }
 
     debugPrint(
-      '[translation-audit] action sanitized to Korean fallback | '
+      '[translation-audit] action sanitized to language fallback | '
+      'language=${appLanguageCode(language)} | '
       'localized="$localized" | original="$original"',
     );
-    return _formatActionForDisplay(_fallbackKoreanActionText());
+    return _fallbackActionText(language);
+  }
+
+  String _trimMessageSentence(String sentence) {
+    var output = _normalizeDisplayText(sentence);
+    if (output.isEmpty) {
+      return output;
+    }
+
+    const replacements = <List<String>>[
+      <String>['생각보다 ', ''],
+      <String>['충분히 ', ''],
+      <String>['꽤 ', ''],
+      <String>['조금만 ', ''],
+      <String>['조금 ', ''],
+      <String>['더 ', ''],
+      <String>['오히려 ', ''],
+      <String>['은근히 ', ''],
+      <String>['가볍게 ', ''],
+      <String>['할 수 있어', '돼'],
+      <String>['될 수 있어', '돼'],
+      <String>['이어질 수 있어', '이어져'],
+      <String>['풀릴 수 있어', '풀려'],
+      <String>['남을 수 있어', '남아'],
+      <String>['보여줄 수 있어', '보여줘'],
+      <String>['바꿔줄 수 있어', '바꿔줘'],
+      <String>['중요할 수 있어', '중요해'],
+      <String>['괜찮을 수 있어', '괜찮아'],
+      <String>['좋을 수 있어', '좋아'],
+      <String>['잘 맞을 수 있어', '잘 맞아'],
+      <String>['해도 괜찮아', '괜찮아'],
+      <String>['봐도 괜찮아', '봐도 돼'],
+      <String>['하지 않아도 돼', '안 해도 돼'],
+      <String>['하지 않는 편이 더 좋아', '안 하는 게 좋아'],
+      <String>['하는 쪽이 좋아', '좋아'],
+      <String>['하는 편이 좋아', '좋아'],
+      <String>['지금 필요한 건 ', ''],
+      <String>['오늘은 ', ''],
+      <String>['지금은 ', ''],
+    ];
+
+    for (final replacement in replacements) {
+      output = output.replaceAll(replacement[0], replacement[1]);
+    }
+
+    output = output
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    output = output.replaceAll(RegExp(r'[.!?]+$'), '');
+
+    if (output.length > 24) {
+      const endings = <String>[
+        ' 괜찮아',
+        ' 좋아',
+        ' 중요해',
+        ' 잘 맞아',
+        ' 편해',
+        ' 깔끔해',
+        ' 충분해',
+        ' 더 좋아',
+        ' 더 편해',
+      ];
+      for (final ending in endings) {
+        final index = output.indexOf(ending);
+        if (index >= 12 && index + ending.length <= 24) {
+          output = output.substring(0, index + ending.length);
+          break;
+        }
+      }
+    }
+
+    if (output.length > 24) {
+      output = output.substring(0, 24).trimRight();
+    }
+
+    return output;
+  }
+
+  String _condenseTodayMessage(String rawText) {
+    final normalized = _normalizeDisplayText(rawText);
+    if (normalized.isEmpty) {
+      return normalized;
+    }
+
+    final sentences = normalized
+        .split(RegExp(r'[\n.!?]+'))
+        .map(_trimMessageSentence)
+        .where((String sentence) => sentence.isNotEmpty)
+        .toList();
+
+    final picked = <String>[];
+    var totalLength = 0;
+
+    for (final sentence in sentences) {
+      final candidateLength = totalLength + sentence.length;
+      if (picked.length >= 2) {
+        break;
+      }
+      if (picked.isNotEmpty && candidateLength > 40) {
+        break;
+      }
+      picked.add(sentence);
+      totalLength += sentence.length;
+    }
+
+    if (picked.isEmpty) {
+      return _trimMessageSentence(normalized);
+    }
+
+    final joined = picked.join('\n');
+    return joined.length <= 40 ? joined : _trimMessageSentence(joined);
   }
 
   String _normalizeSourceText(dynamic text) {
@@ -1322,38 +1622,47 @@ class _HomeScreenState extends State<HomeScreen> {
     addTagIfMatches('social', <String>[
       '대화', '연락', '답장', '사람', '인기', '듣', '말', '소통',
       '会話', '連絡', '人気', '聞き上手',
+      'reply', 'talk', 'social', 'message', 'people', 'conversation',
     ]);
     addTagIfMatches('saving', <String>[
       '절약', '지출', '금전', '통신비', '돈', '가계부',
       '節約', '金運', '通信費',
+      'spending', 'money', 'save', 'bill', 'budget',
     ]);
     addTagIfMatches('rest', <String>[
       '휴식', '회복', '느긋', '천천히', '컨디션', '쉬',
       '休', 'リフレッシュ', '気楽',
+      'rest', 'pause', 'slow', 'recovery', 'calm',
     ]);
     addTagIfMatches('outing', <String>[
       '산책', '드라이브', '외출', '햇빛', '공기', '나가',
       '散歩', 'ドライブ', '外', 'テーマパーク',
+      'walk', 'outside', 'fresh air', 'step outside', 'out',
     ]);
     addTagIfMatches('focus', <String>[
       '집중', '정리', '확인', '체크', '루틴', '마무리', '우선순위',
       '集中', '確認', '効率', '作業',
+      'focus', 'priority', 'finish', 'check', 'clear',
     ]);
     addTagIfMatches('caution', <String>[
       '주의', '실수', '조심', '흔들', '과로', '무리',
       '注意', 'ミス', '振り回', '気をつけ',
+      'careful', 'double-check', 'mistake', 'slow down', 'caution',
     ]);
     addTagIfMatches('good_flow', <String>[
       '좋', '기회', '흐름', '잘 풀', '찬스', '무난',
       'チャンス', '広がる', '順調',
+      'good', 'chance', 'smooth', 'bright', 'flow',
     ]);
     addTagIfMatches('home', <String>[
       '집', '방', '책상', '정리', '꽃', '환기',
       '部屋', '花', 'レジ',
+      'home', 'room', 'desk', 'tidy', 'space',
     ]);
     addTagIfMatches('food', <String>[
       '먹', '간식', '물', '차', '닭', '해조',
       '食べ', 'ひじき', '鶏肉',
+      'water', 'snack', 'eat', 'drink', 'meal',
     ]);
 
     return tags;
@@ -1401,7 +1710,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return '';
   }
 
-  String _generateTodayMessageText({
+  String _buildMessageText({
+    required AppLanguage language,
     required Set<String> tags,
     required int rank,
     required int score,
@@ -1410,6 +1720,109 @@ class _HomeScreenState extends State<HomeScreen> {
     final isHigh = rank <= 3 || score >= 90;
     final isLow = rank >= 9 || score < 74;
     final isMidHigh = !isHigh && (rank <= 6 || score >= 82);
+
+    if (language == AppLanguage.en) {
+      final openings = isHigh
+          ? <String>[
+              'The overall flow looks bright today.',
+              'A good scene may open up more easily today.',
+              'Things may move more smoothly than expected.',
+            ]
+          : isLow
+              ? <String>[
+                  'A slower pace may suit you better today.',
+                  'Keeping things gentle will work well today.',
+                  'Energy management should come first today.',
+                ]
+              : <String>[
+                  'The flow feels fairly steady today.',
+                  'A balanced approach may work best today.',
+                  'Small choices may shape the mood today.',
+                ];
+      final closings = isHigh
+          ? <String>[
+              'Try one thing you have wanted to start.',
+              'A small move could feel surprisingly good.',
+              'Lean into the brighter option if it feels right.',
+            ]
+          : isLow
+              ? <String>[
+                  'Protect your pace and keep things simple.',
+                  'Being kind to yourself will help more than pushing.',
+                  'Less force and more balance will help today.',
+                ]
+              : <String>[
+                  'One clear choice can tidy the whole day.',
+                  'Keep it light, but keep it clear.',
+                  'A little care can make the day feel cleaner.',
+                ];
+      final tagMessages = <String, List<String>>{
+        'social': <String>[
+          'A short check-in could warm the mood.',
+          'One light reply may help things open up.',
+        ],
+        'saving': <String>[
+          'A small money check may keep things tidy.',
+          'Pause once before spending today.',
+        ],
+        'rest': <String>[
+          'Rest may help more than forcing momentum.',
+          'A short pause can reset the day.',
+        ],
+        'outing': <String>[
+          'A little fresh air could shift the mood.',
+          'A short walk may help more than expected.',
+        ],
+        'focus': <String>[
+          'One clear priority may be enough today.',
+          'Finishing one thing could feel especially good.',
+        ],
+        'caution': <String>[
+          'Checking once more may save the day.',
+          'A slower step could keep things cleaner.',
+        ],
+        'good_flow': <String>[
+          'A good window may be closer than you think.',
+          'A light start could lead to a good result.',
+        ],
+        'home': <String>[
+          'Tidying one small space may clear your head.',
+          'A neater corner could help the mood settle.',
+        ],
+        'food': <String>[
+          'A small snack or water may help your energy.',
+          'Taking care of your body first may pay off.',
+        ],
+      };
+
+      final firstLine = _pickMessageForPriorityTags(
+        tags: tags,
+        priority: const <String>[
+          'social',
+          'focus',
+          'saving',
+          'rest',
+          'caution',
+          'outing',
+          'good_flow',
+          'home',
+          'food',
+        ],
+        poolByTag: tagMessages,
+        seed: seed,
+        salt: isHigh ? 17 : isMidHigh ? 23 : 31,
+      );
+      final secondLine = _pickVariant(
+        closings,
+        seed,
+        salt: isHigh ? 41 : isLow ? 53 : 47,
+      );
+      final fallbackLine = _pickVariant(openings, seed, salt: 61);
+      if (firstLine.isEmpty) {
+        return '$fallbackLine\n$secondLine';
+      }
+      return '$firstLine\n$secondLine';
+    }
 
     final comboMessages = <String, List<String>>{
       'saving+social': <String>[
@@ -1729,9 +2142,37 @@ class _HomeScreenState extends State<HomeScreen> {
     return deduped.take(2).join('\n');
   }
 
-  String _generateActionLabel({
+  String _buildActionText({
+    required AppLanguage language,
     required Set<String> tags,
   }) {
+    if (language == AppLanguage.en) {
+      if (tags.contains('saving')) {
+        return 'Check spending once';
+      }
+      if (tags.contains('social')) {
+        return 'Send one reply';
+      }
+      if (tags.contains('rest')) {
+        return 'Take a short pause';
+      }
+      if (tags.contains('outing')) {
+        return 'Step outside for a bit';
+      }
+      if (tags.contains('focus')) {
+        return 'Finish one important task';
+      }
+      if (tags.contains('home')) {
+        return 'Tidy one small spot';
+      }
+      if (tags.contains('food')) {
+        return 'Drink water first';
+      }
+      if (tags.contains('caution')) {
+        return 'Double-check before moving on';
+      }
+      return 'Protect your pace first';
+    }
     if (tags.contains('saving')) {
       return '지출 한 번만 체크하기';
     }
@@ -1759,11 +2200,33 @@ class _HomeScreenState extends State<HomeScreen> {
     return '오늘 페이스 먼저 챙기기';
   }
 
-  String _generateResultInsightText({
+  String _buildInterpretationText({
+    required AppLanguage language,
     required Set<String> tags,
     required int rank,
     required int score,
   }) {
+    if (language == AppLanguage.en) {
+      if (rank <= 3 || score >= 90) {
+        return 'The flow is strong today.\nA light push may work well.';
+      }
+      if (tags.contains('saving')) {
+        return 'The day looks steady.\nJust keep spending a little cleaner.';
+      }
+      if (tags.contains('caution')) {
+        return 'Control matters more than speed today.\nSmall checks will help.';
+      }
+      if (tags.contains('rest')) {
+        return 'Recovery deserves real points today.\nKeep your rhythm simple.';
+      }
+      if (tags.contains('focus')) {
+        return 'One clear focus could improve the feel of the day.';
+      }
+      if (rank >= 9 || score < 74) {
+        return 'The day may feel quiet.\nKeeping it gentle will protect the flow.';
+      }
+      return 'Overall, the day looks fairly steady.\nSmall choices can make it cleaner.';
+    }
     if (rank <= 3 || score >= 90) {
       return '전체 흐름은 꽤 좋은 편이야.\n가볍게 밀어붙여도 괜찮아';
     }
@@ -1786,37 +2249,49 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Map<String, String> _buildDisplayCopy({
+    required AppLanguage language,
     required dynamic rawMessage,
     required dynamic rawAction,
     required int rank,
     required int score,
   }) {
-    final safeRawMessage = _sanitizeMessageForKoreanDisplay(rawMessage);
-    final safeRawAction = _sanitizeActionForKoreanDisplay(rawAction);
+    final safeRawMessage = _sanitizeLocalizedMessage(
+      rawMessage,
+      language: language,
+    );
+    final safeRawAction = _sanitizeLocalizedAction(
+      rawAction,
+      language: language,
+    );
     final tags = _extractMeaningTags(
       rawMessage: safeRawMessage,
       rawAction: safeRawAction,
+    );
+
+    final generatedMessage = _buildMessageText(
+      language: language,
+      tags: tags,
+      rank: rank,
+      score: score,
+    );
+    final generatedInsight = _buildInterpretationText(
+      language: language,
+      tags: tags,
+      rank: rank,
+      score: score,
     );
 
     return <String, String>{
       'rawMessage': safeRawMessage,
       'rawAction': safeRawAction,
       'message': _formatTodayMessageForDisplay(
-        _generateTodayMessageText(
-          tags: tags,
-          rank: rank,
-          score: score,
-        ),
+        _condenseTodayMessage(generatedMessage),
       ),
       'action': _formatActionForDisplay(
-        _generateActionLabel(tags: tags),
+        _buildActionText(language: language, tags: tags),
       ),
       'insight': _formatTodayMessageForDisplay(
-        _generateResultInsightText(
-          tags: tags,
-          rank: rank,
-          score: score,
-        ),
+        _condenseTodayMessage(generatedInsight),
       ),
     };
   }
@@ -1945,8 +2420,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_isEnglish) {
       return _splitDisplayTextIntoChunks(
         normalized,
-        targetLength: 24,
-        maxLines: 3,
+        targetLength: 20,
+        maxLines: 2,
       ).join('\n');
     }
 
@@ -1956,27 +2431,27 @@ class _HomeScreenState extends State<HomeScreen> {
           .map((String line) => line.trim())
           .where((String line) => line.isNotEmpty)
           .toList();
-      return lines.take(3).join('\n');
+      return lines.take(2).join('\n');
     }
 
-    if (normalized.length <= 16) {
+    if (normalized.length <= 20) {
       return normalized;
     }
 
     final compact = normalized.replaceAll(RegExp(r'\s+'), ' ').trim();
-    final desiredBreak = _bestKoreanBreakIndex(compact, 10, 18);
+    final desiredBreak = _bestKoreanBreakIndex(compact, 8, 20);
     if (desiredBreak != -1 && desiredBreak < compact.length - 2) {
       final first = compact.substring(0, desiredBreak).trim();
       final second = compact.substring(desiredBreak).trim();
       if (first.isNotEmpty && second.isNotEmpty) {
-        return '$first\n$second';
+        return '$first\n${second.length > 20 ? second.substring(0, 20).trimRight() : second}';
       }
     }
 
     final lines = _splitDisplayTextIntoChunks(
       compact,
-      targetLength: 13,
-      maxLines: 3,
+      targetLength: 18,
+      maxLines: 2,
     );
     return lines.join('\n');
   }
@@ -2170,21 +2645,25 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       final remoteEntry = remoteRankings[widget.zodiacKey];
-      final message = _sanitizeMessageForKoreanDisplay(
+      final messageField = _language == AppLanguage.en ? 'messageEn' : 'messageKo';
+      final actionField = _language == AppLanguage.en ? 'actionEn' : 'actionKo';
+      final message = _sanitizeLocalizedMessage(
         _resolveRemoteLocalizedText(
           remoteEntry: remoteEntry,
-          localizedField: 'messageKo',
+          localizedField: messageField,
           originalField: 'messageJa',
         ),
         originalText: remoteEntry?['messageJa'],
+        language: _language,
       );
-      final action = _sanitizeActionForKoreanDisplay(
+      final action = _sanitizeLocalizedAction(
         _resolveRemoteLocalizedText(
           remoteEntry: remoteEntry,
-          localizedField: 'actionKo',
+          localizedField: actionField,
           originalField: 'actionJa',
         ),
         originalText: remoteEntry?['actionJa'],
+        language: _language,
       );
       final rank = remoteEntry?['rank'];
       final remoteDate = normalizeDailyDateKey(payload['date'] as String?);
@@ -2193,13 +2672,15 @@ class _HomeScreenState extends State<HomeScreen> {
         'date': remoteDate.isNotEmpty
             ? remoteDate
             : fallbackResult['date'],
-        'message': _sanitizeMessageForKoreanDisplay(
+        'message': _sanitizeLocalizedMessage(
           message,
           originalText: remoteEntry?['messageJa'],
+          language: _language,
         ),
-        'action': _sanitizeActionForKoreanDisplay(
+        'action': _sanitizeLocalizedAction(
           action,
           originalText: remoteEntry?['actionJa'],
+          language: _language,
         ),
         'rank': rank is int ? rank : fallbackResult['rank'],
         'remoteRankings': remoteRankings,
@@ -2234,8 +2715,14 @@ class _HomeScreenState extends State<HomeScreen> {
     Map<String, Map<String, dynamic>> remoteRankings =
         const <String, Map<String, dynamic>>{},
   }) async {
-    final sanitizedMessage = _sanitizeMessageForKoreanDisplay(result['message']);
-    final sanitizedAction = _sanitizeActionForKoreanDisplay(result['action']);
+    final sanitizedMessage = _sanitizeLocalizedMessage(
+      result['message'],
+      language: _language,
+    );
+    final sanitizedAction = _sanitizeLocalizedAction(
+      result['action'],
+      language: _language,
+    );
     final persistableResult = <String, dynamic>{
       ...result,
       'message': sanitizedMessage,
@@ -2274,6 +2761,10 @@ class _HomeScreenState extends State<HomeScreen> {
       horoscopeCacheSourcePreferenceKey,
       horoscopeCacheSourceVersion,
     );
+    await preferences.setString(
+      horoscopeLanguagePreferenceKey,
+      _selectedLanguageCode,
+    );
     if (remoteRankings.isEmpty) {
       await preferences.remove(horoscopeRemoteRankingsPreferenceKey);
     } else {
@@ -2306,20 +2797,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     final savedDate = preferences.getString(horoscopeDatePreferenceKey);
     final savedZodiacKey = preferences.getString(horoscopeZodiacPreferenceKey);
+    final savedLanguageCode = preferences.getString(horoscopeLanguagePreferenceKey);
 
     debugPrint(
       '[daily-audit] local_cache.load_check | now=${DateTime.now().toIso8601String()} | '
       'today=${_todayString()} | savedDate=${normalizeDailyDateKey(savedDate)} | '
       'savedZodiac=$savedZodiacKey | currentZodiac=${widget.zodiacKey} | '
-      'savedCacheSource=$savedCacheSource',
+      'savedCacheSource=$savedCacheSource | savedLanguage=$savedLanguageCode | '
+      'currentLanguage=$_selectedLanguageCode',
     );
 
     if (savedCacheSource != horoscopeCacheSourceVersion ||
+        savedLanguageCode != _selectedLanguageCode ||
         normalizeDailyDateKey(savedDate) != _todayString() ||
         savedZodiacKey != widget.zodiacKey) {
       debugPrint(
         '[daily-audit] local_cache.miss | '
-        'reason=date_or_zodiac_or_source_mismatch | '
+        'reason=date_or_zodiac_or_source_or_language_mismatch | '
         'expectedCacheSource=$horoscopeCacheSourceVersion',
       );
       return null;
@@ -2348,9 +2842,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final result = <String, dynamic>{
       'date': normalizeDailyDateKey(savedDate),
       'zodiacKey': savedZodiacKey,
-      'message': _sanitizeMessageForKoreanDisplay(savedMessage),
+      'message': _sanitizeLocalizedMessage(
+        savedMessage,
+        language: _language,
+      ),
       'score': savedScore,
-      'action': _sanitizeActionForKoreanDisplay(savedAction),
+      'action': _sanitizeLocalizedAction(
+        savedAction,
+        language: _language,
+      ),
       'rank': savedRank,
       'emoji': savedEmoji,
       'remoteRankings': savedRemoteRankings,
@@ -2816,6 +3316,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final resolvedScore = (baseResult['score'] as int?) ?? 0;
     final rawMessage = _interactiveMessageOverride ?? baseResult['message'];
     final displayCopy = _buildDisplayCopy(
+      language: _language,
       rawMessage: rawMessage,
       rawAction: baseResult['action'],
       rank: resolvedRank,
@@ -2942,11 +3443,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return _isEnglish
         ? 'Today’s Morning Ohasa ✨\n'
-            '${_currentZodiac.nameKo} ranked #$rank today\n'
+            '${_currentZodiac.nameFor(_language)} ranked #$rank today\n'
             '“$message”\n\n'
             '$appLink'
         : '오늘의 오하아사 결과 ✨\n'
-            '${_currentZodiac.nameKo} 오늘 $rank위\n'
+            '${_currentZodiac.nameFor(_language)} 오늘 $rank위\n'
             '“$message”\n\n'
             '$appLink';
   }
@@ -3353,7 +3854,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final titles = <String, String>{
               'menu': _tr('설정', 'Settings'),
               'theme': _tr('테마', 'Theme'),
-              'font': _tr('폰트', 'Font'),
+              'text': _tr('글자 설정', 'Text Settings'),
               'language': _tr('언어', 'Language'),
               'notification': _tr('알림', 'Notifications'),
               'zodiac': _tr('별자리 변경', 'Change Zodiac'),
@@ -3433,10 +3934,15 @@ class _HomeScreenState extends State<HomeScreen> {
                           onTap: () => modalSetState(() => activeSection = 'language'),
                         ),
                         _buildSettingsMenuItem(
-                          title: _tr('폰트', 'Font'),
-                          subtitle: appFontOptions[_selectedFontKey]?.label ?? 'Noto Sans KR',
+                          title: _tr('글자 설정', 'Text Settings'),
+                          subtitle:
+                              '${appFontOptions[_selectedFontKey]?.label ?? 'Noto Sans KR'} · '
+                              '${_tr(
+                                appTextSizeOptions[_selectedTextSizeKey]?.labelKo ?? '기본',
+                                appTextSizeOptions[_selectedTextSizeKey]?.labelEn ?? 'Default',
+                              )}',
                           icon: Icons.text_fields_rounded,
-                          onTap: () => modalSetState(() => activeSection = 'font'),
+                          onTap: () => modalSetState(() => activeSection = 'text'),
                         ),
                         _buildSettingsMenuItem(
                           title: _tr('알림', 'Notifications'),
@@ -3448,12 +3954,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         _buildSettingsMenuItem(
                           title: _tr('별자리 변경', 'Change Zodiac'),
-                          subtitle: _currentZodiac.nameKo,
+                          subtitle: _currentZodiac.nameFor(_language),
                           icon: zodiacIconData(widget.zodiacKey),
                           onTap: () => modalSetState(() => activeSection = 'zodiac'),
                         ),
                       ] else if (activeSection == 'theme') ..._buildThemeSettingsContent()
-                      else if (activeSection == 'font') ..._buildFontSettingsContent()
+                      else if (activeSection == 'text') ..._buildTextSettingsContent()
                       else if (activeSection == 'language') ..._buildLanguageSettingsContent()
                       else if (activeSection == 'notification')
                         ..._buildNotificationSettingsContent(modalSetState)
@@ -3879,102 +4385,271 @@ Widget _buildThemePreviewDot(Color color, double size) {
     }).toList();
   }
 
-  List<Widget> _buildFontSettingsContent() {
-    return appFontOptions.entries.map((MapEntry<String, AppFontOption> entry) {
-      final font = entry.value;
-      final isSelected = entry.key == _selectedFontKey;
+  List<Widget> _buildTextSettingsContent() {
+    final selectedTextScale =
+        appTextSizeOptions[_selectedTextSizeKey]?.scale ??
+        appTextSizeOptions['default']!.scale;
+    final previewTheme = buildAppTextTheme(
+      _selectedFontKey,
+      Theme.of(context).textTheme,
+      scale: selectedTextScale,
+    );
 
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(22),
-            onTap: () async {
-              setState(() {
-                _selectedFontKey = entry.key;
-              });
-              await _saveFont(entry.key);
-            },
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: <Color>[
-                    _cardStart,
-                    Color.lerp(_cardEnd, _accentSoft, 0.16) ?? _cardEnd,
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: isSelected ? _accent : _accentSoft,
-                  width: isSelected ? 1.7 : 1.1,
-                ),
+    return <Widget>[
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[
+              _cardStart,
+              Color.lerp(_cardEnd, _accentSoft, 0.18) ?? _cardEnd,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: _accentSoft.withValues(alpha: 0.84),
+          ),
+          boxShadow: _softGlow(_accent, baseOpacity: 0.1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _tr('미리보기', 'Preview'),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: _accent,
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: <Color>[
-                          _accentSoft.withValues(alpha: 0.72),
-                          _blush.withValues(alpha: 0.72),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(14),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _tr('오늘의 오하아사, 내 페이스로 편하게 읽어봐요', 'Today’s Ohasa, tuned to your reading pace'),
+              style: previewTheme.titleLarge?.copyWith(
+                color: _textPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _tr(
+                '폰트와 글자 크기를 바로 바꿔 보면서 가장 읽기 편한 조합을 골라보세요.',
+                'Try different fonts and sizes to find the most comfortable combination.',
+              ),
+              style: previewTheme.bodyMedium?.copyWith(
+                color: _textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 14),
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[
+              _cardStart,
+              Color.lerp(_cardEnd, _accentSoft, 0.16) ?? _cardEnd,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: _accentSoft.withValues(alpha: 0.82),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _tr('글자 크기', 'Text Size'),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: _textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: appTextSizeOptions.entries.map((
+                MapEntry<String, AppTextSizeOption> entry,
+              ) {
+                final option = entry.value;
+                final isSelected = entry.key == _selectedTextSizeKey;
+
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      right: entry.key == 'large' ? 0 : 8,
                     ),
-                    child: Icon(
-                      Icons.text_fields_rounded,
-                      color: _iconColor,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          font.label,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: _textPrimary,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () async {
+                          setState(() {
+                            _selectedTextSizeKey = entry.key;
+                          });
+                          await _saveTextSize(entry.key);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: isSelected
+                                  ? <Color>[
+                                      _accent,
+                                      Color.lerp(_accent, _blush, 0.4) ?? _accent,
+                                    ]
+                                  : <Color>[
+                                      Colors.white.withValues(
+                                        alpha: _isDarkTheme ? 0.06 : 0.72,
+                                      ),
+                                      _accentSoft.withValues(
+                                        alpha: _isDarkTheme ? 0.08 : 0.16,
+                                      ),
+                                    ],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSelected ? _accent : _accentSoft,
+                              width: isSelected ? 1.7 : 1.1,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                _tr(option.labelKo, option.labelEn),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: isSelected ? Colors.white : _textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Aa',
+                                style: TextStyle(
+                                  fontSize: 12 * option.scale + 6,
+                                  fontWeight: FontWeight.w900,
+                                  color: isSelected ? Colors.white : _accent,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          font.preview,
-                          style: buildAppTextTheme(
-                            entry.key,
-                            Theme.of(context).textTheme,
-                          ).bodyMedium?.copyWith(
-                                fontSize: 14,
-                                color: _textSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                  if (isSelected)
-                    Icon(
-                      Icons.check_circle_rounded,
-                      color: _iconColor,
-                      size: 22,
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 14),
+      ...appFontOptions.entries.map((MapEntry<String, AppFontOption> entry) {
+        final font = entry.value;
+        final isSelected = entry.key == _selectedFontKey;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(22),
+              onTap: () async {
+                setState(() {
+                  _selectedFontKey = entry.key;
+                });
+                await _saveFont(entry.key);
+              },
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[
+                      _cardStart,
+                      Color.lerp(_cardEnd, _accentSoft, 0.16) ?? _cardEnd,
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: isSelected ? _accent : _accentSoft,
+                    width: isSelected ? 1.7 : 1.1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: <Color>[
+                            _accentSoft.withValues(alpha: 0.72),
+                            _blush.withValues(alpha: 0.72),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        Icons.text_fields_rounded,
+                        color: _iconColor,
+                        size: 22,
+                      ),
                     ),
-                ],
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            font.label,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: _textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            font.preview,
+                            style: buildAppTextTheme(
+                              entry.key,
+                              Theme.of(context).textTheme,
+                              scale: selectedTextScale,
+                            ).bodyMedium?.copyWith(
+                                  fontSize: 14 * selectedTextScale,
+                                  color: _textSecondary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (isSelected)
+                      Icon(
+                        Icons.check_circle_rounded,
+                        color: _iconColor,
+                        size: 22,
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      );
-    }).toList();
+        );
+      }),
+    ];
   }
 
   List<Widget> _buildNotificationSettingsContent(StateSetter modalSetState) {
@@ -4177,7 +4852,7 @@ Widget _buildThemePreviewDot(Color color, double size) {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        _currentZodiac.nameKo,
+                        _currentZodiac.nameFor(_language),
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
@@ -4237,7 +4912,7 @@ Widget _buildThemePreviewDot(Color color, double size) {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            entry.value.nameKo,
+                            entry.value.nameFor(_language),
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
@@ -4564,7 +5239,8 @@ Widget _buildThemePreviewDot(Color color, double size) {
                 child: Material(
                   color: Colors.transparent,
                   child: ShareCard(
-                    zodiacName: _currentZodiac.nameKo,
+                    zodiacName: _currentZodiac.nameFor(_language),
+                    isEnglish: _isEnglish,
                     zodiacIcon: zodiacIconData(widget.zodiacKey),
                     rank: (currentItem['rank'] as int?) ?? _currentZodiacRank,
                     message: currentItem['message'] as String,
@@ -4839,7 +5515,7 @@ Widget _buildThemePreviewDot(Color color, double size) {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            _currentZodiac.nameKo,
+                            _currentZodiac.nameFor(_language),
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
@@ -4965,8 +5641,8 @@ Widget _buildThemePreviewDot(Color color, double size) {
                       Expanded(
                         child: Text(
                           _isEnglish
-                              ? '${_currentZodiac.nameKo} today #$displayedRank'
-                              : '${_currentZodiac.nameKo} 오늘 $displayedRank위',
+                              ? '${_currentZodiac.nameFor(_language)} today #$displayedRank'
+                              : '${_currentZodiac.nameFor(_language)} 오늘 $displayedRank위',
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
@@ -5067,7 +5743,7 @@ Widget _buildThemePreviewDot(Color color, double size) {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              zodiac.nameKo,
+              zodiac.nameFor(_language),
               style: TextStyle(
                 fontSize: 17,
                 fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w700,
@@ -5226,11 +5902,11 @@ Widget _buildThemePreviewDot(Color color, double size) {
                           key: ValueKey<String>(displayMessage),
                           textAlign: TextAlign.center,
                           textWidthBasis: TextWidthBasis.longestLine,
-                          maxLines: 3,
-                          overflow: TextOverflow.visible,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: _isEnglish ? 19 : 20,
-                            height: _isEnglish ? 1.38 : 1.56,
+                            height: _isEnglish ? 1.34 : 1.48,
                             fontWeight: FontWeight.w800,
                             color: _textPrimary,
                             letterSpacing: _isEnglish ? -0.18 : -0.48,
