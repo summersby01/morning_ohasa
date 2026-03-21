@@ -45,6 +45,7 @@ const String horoscopeCacheSourcePreferenceKey = 'daily_horoscope_cache_source';
 const String horoscopeRemoteRankingsPreferenceKey =
     'daily_horoscope_remote_rankings';
 const String horoscopeLanguagePreferenceKey = 'daily_horoscope_language';
+const String horoscopeCacheScopePreferenceKey = 'daily_horoscope_scope';
 const String horoscopeCacheSourceVersion = 'tv-asahi-goodmorning-v1';
 final ValueNotifier<String> appFontKeyNotifier = ValueNotifier<String>(
   'notoSansKr',
@@ -365,6 +366,14 @@ String currentDailyDateKey() {
   return '${now.year}-$month-$day';
 }
 
+String dailyHoroscopeCacheScope({
+  required String date,
+  required String zodiacKey,
+  required String languageCode,
+}) {
+  return '${normalizeDailyDateKey(date)}_${zodiacKey}_$languageCode';
+}
+
 Map<String, Map<String, dynamic>> decodeCachedRemoteRankings(String? raw) {
   if (raw == null || raw.trim().isEmpty) {
     return <String, Map<String, dynamic>>{};
@@ -410,11 +419,18 @@ Map<String, dynamic>? loadInitialDailyHoroscopeResult({
     preferences.getString(horoscopeDatePreferenceKey),
   );
   final savedZodiacKey = preferences.getString(horoscopeZodiacPreferenceKey);
+  final savedScope = preferences.getString(horoscopeCacheScopePreferenceKey);
+  final expectedScope = dailyHoroscopeCacheScope(
+    date: currentDailyDateKey(),
+    zodiacKey: zodiacKey,
+    languageCode: languageCode,
+  );
 
   if (savedCacheSource != horoscopeCacheSourceVersion ||
       savedLanguageCode != languageCode ||
       savedDate != currentDailyDateKey() ||
-      savedZodiacKey != zodiacKey) {
+      savedZodiacKey != zodiacKey ||
+      (savedScope != null && savedScope != expectedScope)) {
     return null;
   }
 
@@ -2416,6 +2432,7 @@ class _HomeScreenState extends State<HomeScreen> {
       'rawAction': safeRawAction,
       'action': _formatActionForDisplay(
         _buildActionText(language: language, tags: tags),
+        language: language,
       ),
       'insight': _formatTodayMessageForDisplay(
         _condenseTodayMessage(generatedInsight),
@@ -2656,7 +2673,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return output.trim();
   }
 
-  String _formatActionForDisplay(String rawText) {
+  String _formatActionForDisplay(
+    String rawText, {
+    required AppLanguage language,
+  }) {
     final normalized = _normalizeDisplayText(rawText).replaceAll('\n', ' ').trim();
     if (normalized.isEmpty) {
       return normalized;
@@ -2668,13 +2688,13 @@ class _HomeScreenState extends State<HomeScreen> {
         .replaceAll(RegExp(r'\s{2,}'), ' ')
         .trim();
 
-    if (compact.length <= (_isEnglish ? 30 : 18)) {
+    if (compact.length <= (language == AppLanguage.en ? 30 : 18)) {
       return compact;
     }
 
     final lines = _splitDisplayTextIntoChunks(
       compact,
-      targetLength: _isEnglish ? 16 : 10,
+      targetLength: language == AppLanguage.en ? 16 : 10,
       maxLines: 2,
     );
     return lines.join('\n');
@@ -2902,9 +2922,9 @@ class _HomeScreenState extends State<HomeScreen> {
       score: persistableResult['score'] as int,
     );
     persistableResult['displayAction'] =
-        persistableResult['displayAction'] ?? fixedContent['action'];
+        fixedContent['action'];
     persistableResult['insight'] =
-        persistableResult['insight'] ?? fixedContent['insight'];
+        fixedContent['insight'];
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(
       horoscopeDatePreferenceKey,
@@ -2950,6 +2970,14 @@ class _HomeScreenState extends State<HomeScreen> {
       horoscopeLanguagePreferenceKey,
       _selectedLanguageCode,
     );
+    await preferences.setString(
+      horoscopeCacheScopePreferenceKey,
+      dailyHoroscopeCacheScope(
+        date: persistableResult['date'] as String,
+        zodiacKey: persistableResult['zodiacKey'] as String,
+        languageCode: _selectedLanguageCode,
+      ),
+    );
     if (remoteRankings.isEmpty) {
       await preferences.remove(horoscopeRemoteRankingsPreferenceKey);
     } else {
@@ -2983,19 +3011,27 @@ class _HomeScreenState extends State<HomeScreen> {
     final savedDate = preferences.getString(horoscopeDatePreferenceKey);
     final savedZodiacKey = preferences.getString(horoscopeZodiacPreferenceKey);
     final savedLanguageCode = preferences.getString(horoscopeLanguagePreferenceKey);
+    final savedScope = preferences.getString(horoscopeCacheScopePreferenceKey);
+    final expectedScope = dailyHoroscopeCacheScope(
+      date: _todayString(),
+      zodiacKey: widget.zodiacKey,
+      languageCode: _selectedLanguageCode,
+    );
 
     debugPrint(
       '[daily-audit] local_cache.load_check | now=${DateTime.now().toIso8601String()} | '
       'today=${_todayString()} | savedDate=${normalizeDailyDateKey(savedDate)} | '
       'savedZodiac=$savedZodiacKey | currentZodiac=${widget.zodiacKey} | '
       'savedCacheSource=$savedCacheSource | savedLanguage=$savedLanguageCode | '
-      'currentLanguage=$_selectedLanguageCode',
+      'currentLanguage=$_selectedLanguageCode | '
+      'savedScope=$savedScope | expectedScope=$expectedScope',
     );
 
     if (savedCacheSource != horoscopeCacheSourceVersion ||
         savedLanguageCode != _selectedLanguageCode ||
         normalizeDailyDateKey(savedDate) != _todayString() ||
-        savedZodiacKey != widget.zodiacKey) {
+        savedZodiacKey != widget.zodiacKey ||
+        (savedScope != null && savedScope != expectedScope)) {
       debugPrint(
         '[daily-audit] local_cache.miss | '
         'reason=date_or_zodiac_or_source_or_language_mismatch | '
@@ -3007,10 +3043,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final savedMessage = preferences.getString(horoscopeMessagePreferenceKey);
     final savedScore = preferences.getInt(horoscopeScorePreferenceKey);
     final savedAction = preferences.getString(horoscopeActionPreferenceKey);
-    final savedDisplayAction = preferences.getString(
-      horoscopeDisplayActionPreferenceKey,
-    );
-    final savedInsight = preferences.getString(horoscopeInsightPreferenceKey);
     final savedRank = preferences.getInt(horoscopeRankPreferenceKey);
     final savedEmoji = preferences.getString(horoscopeEmojiPreferenceKey);
     final savedRemoteRankings = decodeCachedRemoteRankings(
@@ -3020,8 +3052,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (savedMessage == null ||
         savedScore == null ||
         savedAction == null ||
-        savedDisplayAction == null ||
-        savedInsight == null ||
         savedRank == null ||
         savedEmoji == null) {
       debugPrint(
@@ -3029,6 +3059,14 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       return null;
     }
+
+    final fixedContent = _buildFixedDailyContent(
+      language: _language,
+      rawMessage: savedMessage,
+      rawAction: savedAction,
+      rank: savedRank,
+      score: savedScore,
+    );
 
     final result = <String, dynamic>{
       'date': normalizeDailyDateKey(savedDate),
@@ -3042,8 +3080,8 @@ class _HomeScreenState extends State<HomeScreen> {
         savedAction,
         language: _language,
       ),
-      'displayAction': savedDisplayAction,
-      'insight': savedInsight,
+      'displayAction': fixedContent['action'],
+      'insight': fixedContent['insight'],
       'rank': savedRank,
       'emoji': savedEmoji,
       'remoteRankings': savedRemoteRankings,
@@ -3532,10 +3570,8 @@ class _HomeScreenState extends State<HomeScreen> {
         rank: resolvedRank,
         score: resolvedScore,
       ),
-      'action':
-          baseResult['displayAction'] ?? fixedContent['action'],
-      'insight':
-          baseResult['insight'] ?? fixedContent['insight'],
+      'action': fixedContent['action'],
+      'insight': fixedContent['insight'],
       'rank': resolvedRank,
     };
     return resolvedResult;
@@ -6234,7 +6270,7 @@ Widget _buildThemePreviewDot(Color color, double size) {
   Widget _buildActionCard(String action) {
     final displayAction =
         (_currentDisplayResult['action'] as String?) ??
-        _formatActionForDisplay(action);
+        _formatActionForDisplay(action, language: _language);
 
     return Container(
       padding: const EdgeInsets.all(14),
