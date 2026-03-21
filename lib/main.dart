@@ -5960,6 +5960,7 @@ Widget _buildThemePreviewDot(Color color, double size) {
             children: [
               Text(
                 _tr('오늘 점수', 'Today\'s Score'),
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
                   color: _textSecondary,
