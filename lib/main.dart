@@ -1562,6 +1562,36 @@ class _HomeScreenState extends State<HomeScreen> {
     return output;
   }
 
+  String _trimEnglishMessageSentence(String sentence) {
+    var output = _normalizeDisplayText(sentence)
+        .replaceAll('\n', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (output.isEmpty) {
+      return output;
+    }
+
+    const replacements = <List<String>>[
+      <String>['really ', ''],
+      <String>['quite ', ''],
+      <String>['very ', ''],
+      <String>['just ', ''],
+      <String>['a little ', ''],
+      <String>['may be able to ', 'can '],
+      <String>['could be a good time to ', 'try to '],
+      <String>['it may help to ', 'try to '],
+      <String>['you may want to ', 'try to '],
+      <String>['today may be a good day to ', 'try to '],
+    ];
+
+    for (final replacement in replacements) {
+      output = output.replaceAll(replacement[0], replacement[1]);
+    }
+
+    output = output.replaceAll(RegExp(r'[.!?]+$'), '').trim();
+    return output;
+  }
+
   String _truncateKoreanMessageAtBoundary(String text, int maxLength) {
     final normalized = _normalizeDisplayText(text);
     if (normalized.length <= maxLength) {
@@ -1579,6 +1609,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final spaceIndex = normalized.lastIndexOf(' ', maxLength);
     if (spaceIndex >= 4) {
+      return normalized.substring(0, spaceIndex).trimRight();
+    }
+
+    return normalized.substring(0, maxLength).trimRight();
+  }
+
+  String _truncateEnglishMessageAtBoundary(String text, int maxLength) {
+    final normalized = _normalizeDisplayText(text)
+        .replaceAll('\n', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+
+    final punctuationIndex = <String>['. ', '! ', '? ', ', ', '; ', ': ']
+        .map((marker) => normalized.lastIndexOf(marker, maxLength))
+        .fold<int>(-1, (best, index) => index > best ? index : best);
+    if (punctuationIndex >= 12) {
+      return normalized.substring(0, punctuationIndex + 1).trimRight();
+    }
+
+    final spaceIndex = normalized.lastIndexOf(' ', maxLength);
+    if (spaceIndex >= 12) {
       return normalized.substring(0, spaceIndex).trimRight();
     }
 
@@ -1712,7 +1766,64 @@ class _HomeScreenState extends State<HomeScreen> {
     return joined.isEmpty ? '오늘은 내 페이스를 지키는 게 좋아' : joined;
   }
 
-  String _condenseTodayMessage(String rawText) {
+  bool _looksIncompleteEnglishEnding(String text) {
+    final normalized = _normalizeDisplayText(text)
+        .replaceAll('\n', ' ')
+        .replaceAll(RegExp(r'[.!?]+$'), '')
+        .trim()
+        .toLowerCase();
+    if (normalized.isEmpty) {
+      return false;
+    }
+
+    return RegExp(
+      r'(may|can|could|should|would|might|will|to|and|or|but|if|when|with|for|of|the|a|an|your|one clear priority may)$',
+    ).hasMatch(normalized);
+  }
+
+  String finalizeEnglishMessage(String text) {
+    final lines = text
+        .split('\n')
+        .map(_trimEnglishMessageSentence)
+        .where((String line) => line.isNotEmpty)
+        .toList();
+    if (lines.isEmpty) {
+      return 'Keep one clear priority today.';
+    }
+
+    final repaired = <String>[];
+    for (final line in lines.take(2)) {
+      var output = line;
+      if (_looksIncompleteEnglishEnding(output)) {
+        if (output.toLowerCase().endsWith('one clear priority may')) {
+          output = 'One clear priority may be enough today';
+        } else if (output.toLowerCase().endsWith('may')) {
+          output = '$output feel right today';
+        } else if (output.toLowerCase().endsWith('can')) {
+          output = '$output help more than expected';
+        } else if (output.toLowerCase().endsWith('could')) {
+          output = '$output work out well today';
+        } else if (output.toLowerCase().endsWith('should')) {
+          output = '$output stay simple today';
+        } else {
+          output = 'Keep one clear priority today';
+        }
+      }
+
+      if (!RegExp(r'[.!?]$').hasMatch(output)) {
+        output = '$output.';
+      }
+      repaired.add(output);
+    }
+
+    final joined = repaired.take(2).join('\n').trim();
+    return joined.isEmpty ? 'Keep one clear priority today.' : joined;
+  }
+
+  String _condenseTodayMessage(
+    String rawText, {
+    required AppLanguage language,
+  }) {
     final normalized = _normalizeDisplayText(rawText);
     if (normalized.isEmpty) {
       return normalized;
@@ -1720,7 +1831,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final sentences = normalized
         .split(RegExp(r'[\n.!?]+'))
-        .map(_trimMessageSentence)
+        .map(
+          language == AppLanguage.en
+              ? _trimEnglishMessageSentence
+              : _trimMessageSentence,
+        )
         .where((String sentence) => sentence.isNotEmpty)
         .toList();
 
@@ -1732,7 +1847,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (picked.length >= 2) {
         break;
       }
-      if (picked.isNotEmpty && candidateLength > 40) {
+      if (picked.isNotEmpty &&
+          candidateLength > (language == AppLanguage.en ? 56 : 40)) {
         break;
       }
       picked.add(sentence);
@@ -1740,10 +1856,17 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (picked.isEmpty) {
-      return _trimMessageSentence(normalized);
+      return language == AppLanguage.en
+          ? _trimEnglishMessageSentence(normalized)
+          : _trimMessageSentence(normalized);
     }
 
     final joined = picked.join('\n');
+    if (language == AppLanguage.en) {
+      return joined.length <= 56
+          ? joined
+          : _truncateEnglishMessageAtBoundary(joined, 56);
+    }
     return joined.length <= 40 ? joined : _trimMessageSentence(joined);
   }
 
@@ -2435,7 +2558,7 @@ class _HomeScreenState extends State<HomeScreen> {
         language: language,
       ),
       'insight': _formatTodayMessageForDisplay(
-        _condenseTodayMessage(generatedInsight),
+        _condenseTodayMessage(generatedInsight, language: language),
       ),
     };
   }
@@ -2465,14 +2588,14 @@ class _HomeScreenState extends State<HomeScreen> {
       rank: rank,
       score: score,
     );
-    final condensed = _condenseTodayMessage(generated);
+    final condensed = _condenseTodayMessage(generated, language: language);
     final finalized = language == AppLanguage.ko
         ? finalizeKoreanMessage(condensed)
-        : condensed;
+        : finalizeEnglishMessage(condensed);
     final formatted = _formatTodayMessageForDisplay(finalized);
     return language == AppLanguage.ko
         ? finalizeKoreanMessage(formatted)
-        : formatted;
+        : finalizeEnglishMessage(formatted);
   }
 
   List<String> _splitDisplayTextIntoChunks(
@@ -2597,11 +2720,17 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (_isEnglish) {
-      return _splitDisplayTextIntoChunks(
-        normalized,
-        targetLength: 20,
-        maxLines: 2,
-      ).join('\n');
+      if (normalized.contains('\n')) {
+        return normalized
+            .split('\n')
+            .map((String line) => finalizeEnglishMessage(line))
+            .where((String line) => line.isNotEmpty)
+            .take(2)
+            .join('\n');
+      }
+      return finalizeEnglishMessage(
+        normalized.replaceAll(RegExp(r'\s+'), ' ').trim(),
+      );
     }
 
     if (normalized.contains('\n')) {
@@ -6119,8 +6248,8 @@ Widget _buildThemePreviewDot(Color color, double size) {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 278),
+                    child: SizedBox(
+                      width: _isEnglish ? 286 : 278,
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 220),
                         transitionBuilder: (Widget child, Animation<double> animation) {
@@ -6139,12 +6268,12 @@ Widget _buildThemePreviewDot(Color color, double size) {
                           displayMessage,
                           key: ValueKey<String>(displayMessage),
                           textAlign: TextAlign.center,
-                          textWidthBasis: TextWidthBasis.longestLine,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
+                          softWrap: true,
                           style: TextStyle(
                             fontSize: _isEnglish ? 19 : 20,
-                            height: _isEnglish ? 1.34 : 1.48,
+                            height: _isEnglish ? 1.28 : 1.48,
                             fontWeight: FontWeight.w800,
                             color: _textPrimary,
                             letterSpacing: _isEnglish ? -0.18 : -0.48,
