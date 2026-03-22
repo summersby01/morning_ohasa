@@ -9,6 +9,9 @@ import https from 'node:https';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
 const sdkDir = join(projectRoot, '.flutter-sdk');
+const buildHomeDir = join(projectRoot, '.vercel-home');
+const pubCacheDir = join(projectRoot, '.pub-cache');
+const xdgConfigDir = join(buildHomeDir, '.config');
 
 function fetchJson(url) {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -117,9 +120,19 @@ async function ensureFlutterSdk() {
 }
 
 async function main() {
+  await mkdir(buildHomeDir, { recursive: true });
+  await mkdir(pubCacheDir, { recursive: true });
+  await mkdir(xdgConfigDir, { recursive: true });
+
   const flutterBinary = await ensureFlutterSdk();
   const env = {
     ...process.env,
+    HOME: buildHomeDir,
+    PUB_CACHE: pubCacheDir,
+    XDG_CONFIG_HOME: xdgConfigDir,
+    CI: 'true',
+    BOT: 'true',
+    FLUTTER_SUPPRESS_ANALYTICS: 'true',
     PATH: `${join(sdkDir, 'bin')}:${process.env.PATH ?? ''}`,
   };
 
