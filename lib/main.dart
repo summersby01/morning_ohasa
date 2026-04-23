@@ -430,7 +430,7 @@ List<String> remoteRankingDebugList(List<Map<String, dynamic>> rankings) {
 Map<String, int> remoteRankingRankMap(List<Map<String, dynamic>> rankings) {
   final mapped = <String, int>{};
 
-  for (final int index = 0; index < rankings.length; index++) {
+  for (int index = 0; index < rankings.length; index++) {
     final zodiacKey = rankings[index]['zodiacKey'];
     if (zodiacKey is String && zodiacKey.isNotEmpty) {
       mapped[zodiacKey] = index + 1;
@@ -950,7 +950,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, int> get _resolvedRankingsByZodiac {
     final resolved = <String, int>{};
 
-    for (final int index = 0; index < _remoteRankingList.length; index++) {
+    for (int index = 0; index < _remoteRankingList.length; index++) {
       final ranking = _remoteRankingList[index];
       final zodiacKey = ranking['zodiacKey'];
       if (zodiacKey is String && zodiacKey.isNotEmpty) {
