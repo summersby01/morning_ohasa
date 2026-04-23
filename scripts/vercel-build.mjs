@@ -1,17 +1,31 @@
-import { createWriteStream, existsSync, rmSync, renameSync } from 'node:fs';
+import { cpSync, createWriteStream, existsSync, rmSync, renameSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import https from 'node:https';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
 const sdkDir = join(projectRoot, '.flutter-sdk');
+const tempDir = join(projectRoot, '.tmp');
 const buildHomeDir = join(projectRoot, '.vercel-home');
 const pubCacheDir = join(projectRoot, '.pub-cache');
 const xdgConfigDir = join(buildHomeDir, '.config');
+
+function moveDirectorySafe(sourcePath, destinationPath) {
+  try {
+    renameSync(sourcePath, destinationPath);
+    return;
+  } catch (error) {
+    if (error?.code !== 'EXDEV') {
+      throw error;
+    }
+  }
+
+  cpSync(sourcePath, destinationPath, { recursive: true });
+  rmSync(sourcePath, { recursive: true, force: true });
+}
 
 function fetchJson(url) {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -108,14 +122,16 @@ async function ensureFlutterSdk() {
   }
 
   const archiveUrl = `https://storage.googleapis.com/flutter_infra_release/releases/${stableRelease.archive}`;
-  const archivePath = join(tmpdir(), 'flutter-sdk.tar.xz');
-  const extractRoot = join(tmpdir(), `flutter-extract-${Date.now()}`);
+  const archivePath = join(tempDir, 'flutter-sdk.tar.xz');
+  const extractRoot = join(tempDir, `flutter-extract-${Date.now()}`);
 
+  await mkdir(tempDir, { recursive: true });
   await mkdir(extractRoot, { recursive: true });
   await downloadFile(archiveUrl, archivePath);
   await runCommand('tar', ['-xJf', archivePath, '-C', extractRoot]);
 
-  renameSync(join(extractRoot, 'flutter'), sdkDir);
+  moveDirectorySafe(join(extractRoot, 'flutter'), sdkDir);
+  rmSync(extractRoot, { recursive: true, force: true });
   return flutterBinary;
 }
 
