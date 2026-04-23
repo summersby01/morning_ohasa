@@ -1376,17 +1376,26 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
   }
 
+  int _generateDailyScore({required int rank}) {
+    final random = Random(_dailySeed(salt: 53));
+    final baseScore = 100 - (rank * 4);
+    final variation = random.nextInt(17) - 8;
+    return (baseScore + variation).clamp(50, 100);
+  }
+
   Map<String, dynamic> _generateDailyHoroscope() {
     final zodiacItems = _currentZodiacVisualItems;
     final random = Random(_dailySeed());
     final selectedItem = zodiacItems[random.nextInt(zodiacItems.length)];
+    final rank = _currentZodiacRank;
+    final score = _generateDailyScore(rank: rank);
     final result = <String, dynamic>{
       'date': _todayString(),
       'zodiacKey': widget.zodiacKey,
       'message': _pickDailyMessage(language: _language),
-      'score': selectedItem['score'],
+      'score': score,
       'action': _pickDailyAction(language: _language),
-      'rank': _currentZodiacRank,
+      'rank': rank,
       'emoji': selectedItem['emoji'],
     };
 
@@ -1397,6 +1406,9 @@ class _HomeScreenState extends State<HomeScreen> {
         'seedBase': _dailySeed(),
         'messageSeed': _dailySeed(salt: 11),
         'actionSeed': _dailySeed(salt: 29),
+        'scoreSeed': _dailySeed(salt: 53),
+        'scoreBase': 100 - (rank * 4),
+        'rank': rank,
       },
     );
     return result;
