@@ -47,7 +47,7 @@ const String horoscopeRemoteRankingsPreferenceKey =
     'daily_horoscope_remote_rankings';
 const String horoscopeLanguagePreferenceKey = 'daily_horoscope_language';
 const String horoscopeCacheScopePreferenceKey = 'daily_horoscope_scope';
-const String horoscopeCacheSourceVersion = 'tv-asahi-goodmorning-v1';
+const String horoscopeCacheSourceVersion = 'asahi-ohaasa-v2';
 final ValueNotifier<String> appFontKeyNotifier = ValueNotifier<String>(
   'notoSansKr',
 );

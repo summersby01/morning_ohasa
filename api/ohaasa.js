@@ -1,21 +1,27 @@
-const TV_ASAHI_URANAI_URL = 'https://www.tv-asahi.co.jp/goodmorning/uranai/';
+const OHAASA_HOROSCOPE_PAGE_URL =
+  'https://www.asahi.co.jp/ohaasa/week/horoscope/index.html';
+const OHAASA_HOROSCOPE_JSON_URL =
+  'https://www.asahi.co.jp/data/ohaasa2020/horoscope.json';
 
 const ZODIACS = [
-  { zodiacKey: 'aries', zodiacJa: 'おひつじ座', zodiacKo: '양자리' },
-  { zodiacKey: 'taurus', zodiacJa: 'おうし座', zodiacKo: '황소자리' },
-  { zodiacKey: 'gemini', zodiacJa: 'ふたご座', zodiacKo: '쌍둥이자리' },
-  { zodiacKey: 'cancer', zodiacJa: 'かに座', zodiacKo: '게자리' },
-  { zodiacKey: 'leo', zodiacJa: 'しし座', zodiacKo: '사자자리' },
-  { zodiacKey: 'virgo', zodiacJa: 'おとめ座', zodiacKo: '처녀자리' },
-  { zodiacKey: 'libra', zodiacJa: 'てんびん座', zodiacKo: '천칭자리' },
-  { zodiacKey: 'scorpio', zodiacJa: 'さそり座', zodiacKo: '전갈자리' },
-  { zodiacKey: 'sagittarius', zodiacJa: 'いて座', zodiacKo: '사수자리' },
-  { zodiacKey: 'capricorn', zodiacJa: 'やぎ座', zodiacKo: '염소자리' },
-  { zodiacKey: 'aquarius', zodiacJa: 'みずがめ座', zodiacKo: '물병자리' },
-  { zodiacKey: 'pisces', zodiacJa: 'うお座', zodiacKo: '물고기자리' },
+  { zodiacKey: 'aries', zodiacJa: 'おひつじ座', zodiacKo: '양자리', sourceCode: '01' },
+  { zodiacKey: 'taurus', zodiacJa: 'おうし座', zodiacKo: '황소자리', sourceCode: '02' },
+  { zodiacKey: 'gemini', zodiacJa: 'ふたご座', zodiacKo: '쌍둥이자리', sourceCode: '03' },
+  { zodiacKey: 'cancer', zodiacJa: 'かに座', zodiacKo: '게자리', sourceCode: '04' },
+  { zodiacKey: 'leo', zodiacJa: 'しし座', zodiacKo: '사자자리', sourceCode: '05' },
+  { zodiacKey: 'virgo', zodiacJa: 'おとめ座', zodiacKo: '처녀자리', sourceCode: '06' },
+  { zodiacKey: 'libra', zodiacJa: 'てんびん座', zodiacKo: '천칭자리', sourceCode: '07' },
+  { zodiacKey: 'scorpio', zodiacJa: 'さそり座', zodiacKo: '전갈자리', sourceCode: '08' },
+  { zodiacKey: 'sagittarius', zodiacJa: 'いて座', zodiacKo: '사수자리', sourceCode: '09' },
+  { zodiacKey: 'capricorn', zodiacJa: 'やぎ座', zodiacKo: '염소자리', sourceCode: '10' },
+  { zodiacKey: 'aquarius', zodiacJa: 'みずがめ座', zodiacKo: '물병자리', sourceCode: '11' },
+  { zodiacKey: 'pisces', zodiacJa: 'うお座', zodiacKo: '물고기자리', sourceCode: '12' },
 ];
 
 const ZODIAC_BY_JA = new Map(ZODIACS.map((zodiac) => [zodiac.zodiacJa, zodiac]));
+const ZODIAC_BY_SOURCE_CODE = new Map(
+  ZODIACS.map((zodiac) => [zodiac.sourceCode, zodiac]),
+);
 const ZODIAC_NAME_PATTERN = new RegExp(
   `^(${ZODIACS.map((zodiac) => zodiac.zodiacJa).join('|')})$`,
 );
@@ -576,6 +582,32 @@ async function normalizeRanking({
   };
 }
 
+function extractOhaasaDetailText(rawText) {
+  const lines = cleanWhitespace(String(rawText ?? ''))
+    .split(/\t|\n/)
+    .map((line) => cleanWhitespace(line))
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return {
+      message: '',
+      action: '',
+    };
+  }
+
+  if (lines.length === 1) {
+    return {
+      message: lines[0],
+      action: '',
+    };
+  }
+
+  return {
+    message: lines.slice(0, -1).join('\n'),
+    action: lines[lines.length - 1],
+  };
+}
+
 module.exports = async function handler(request, response) {
   if (request.method !== 'GET') {
     return response.status(405).json({
@@ -585,44 +617,66 @@ module.exports = async function handler(request, response) {
 
   try {
     const fetchTimestamp = new Date().toISOString();
-    console.info('[api/ohaasa] fetching tv-asahi source page', {
+    console.info('[api/ohaasa] fetching ohaasa source json', {
       fetchTimestamp,
-      sourcePageUrl: TV_ASAHI_URANAI_URL,
+      sourcePageUrl: OHAASA_HOROSCOPE_PAGE_URL,
+      sourceJsonUrl: OHAASA_HOROSCOPE_JSON_URL,
     });
 
-    const pageResponse = await fetch(TV_ASAHI_URANAI_URL, {
+    const pageResponse = await fetch(OHAASA_HOROSCOPE_JSON_URL, {
       headers: { 'user-agent': 'morning-ohasa-vercel/1.0' },
     });
 
     if (!pageResponse.ok) {
-      console.error('[api/ohaasa] source page fetch failed', pageResponse.status);
+      console.error('[api/ohaasa] source json fetch failed', pageResponse.status);
       return response.status(502).json({
         error: 'source_page_fetch_failed',
-        source: 'tv-asahi-goodmorning',
+        source: 'asahi-ohaasa',
       });
     }
 
-    const pageHtml = await pageResponse.text();
-    const lines = htmlToLines(pageHtml);
-    const pageDate = extractPageDate(lines);
-    const rankingOrder = extractRankingOrder(lines);
-    const detailSections = extractDetailSections(lines);
+    const payload = await pageResponse.json();
+    const dailyPayload = Array.isArray(payload) ? payload[0] : null;
+    const pageDate = normalizeDateKey(dailyPayload?.onair_date);
+    const details = Array.isArray(dailyPayload?.detail)
+      ? dailyPayload.detail
+      : [];
 
-    if (!pageDate) {
+    if (!pageDate || details.length === 0) {
       throw new Error('source_date_parse_failed');
     }
 
+    const sortedDetails = details
+      .map((detail) => ({
+        ...detail,
+        ranking_no: Number.parseInt(String(detail?.ranking_no ?? ''), 10),
+        horoscope_st: String(detail?.horoscope_st ?? '').padStart(2, '0'),
+      }))
+      .filter(
+        (detail) =>
+          Number.isInteger(detail.ranking_no) &&
+          detail.ranking_no > 0 &&
+          detail.horoscope_st.length > 0,
+      )
+      .sort((a, b) => a.ranking_no - b.ranking_no);
+
+    const rankList = sortedDetails.map((detail) => detail.horoscope_st);
     const rankings = await Promise.all(
-      rankingOrder.map((zodiacJa, index) => {
-        const zodiac = ZODIAC_BY_JA.get(zodiacJa);
+      sortedDetails.map((detail, index) => {
+        const zodiac = ZODIAC_BY_SOURCE_CODE.get(detail.horoscope_st);
         if (!zodiac) {
-          throw new Error(`unknown_zodiac:${zodiacJa}`);
+          throw new Error(`unknown_zodiac_code:${detail.horoscope_st}`);
         }
+        const detailText = extractOhaasaDetailText(detail.horoscope_text);
 
         return normalizeRanking({
           rank: index + 1,
           zodiac,
-          detailSection: detailSections.get(zodiacJa),
+          detailSection: {
+            message: detailText.message,
+            action: detailText.action,
+            luckyColor: '',
+          },
           dateKey: pageDate,
         });
       }),
@@ -631,21 +685,22 @@ module.exports = async function handler(request, response) {
     console.info('[api/ohaasa] source ranking order', {
       fetchTimestamp,
       sourceDate: pageDate,
-      rankList: rankingOrder,
+      rankList,
       sourceRankings: rankings.map((ranking) => `${ranking.rank}:${ranking.zodiacKey}`),
     });
 
     return response.status(200).json({
       date: formatDate(pageDate),
-      source: 'tv-asahi-goodmorning',
-      sourcePageUrl: TV_ASAHI_URANAI_URL,
+      source: 'asahi-ohaasa',
+      sourcePageUrl: OHAASA_HOROSCOPE_PAGE_URL,
+      sourceJsonUrl: OHAASA_HOROSCOPE_JSON_URL,
       rankings,
     });
   } catch (error) {
     console.error('[api/ohaasa] unexpected failure', error);
     return response.status(500).json({
       error: 'internal_error',
-      source: 'tv-asahi-goodmorning',
+      source: 'asahi-ohaasa',
     });
   }
 };
