@@ -152,6 +152,7 @@ async function main() {
     PATH: `${join(sdkDir, 'bin')}:${process.env.PATH ?? ''}`,
   };
 
+  await runCommand('git', ['config', '--global', '--add', 'safe.directory', sdkDir], { env });
   await runCommand(flutterBinary, ['--version'], { env });
   await runCommand(flutterBinary, ['config', '--enable-web'], { env });
   await runCommand(flutterBinary, ['pub', 'get'], { env });
