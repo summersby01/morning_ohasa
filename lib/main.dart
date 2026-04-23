@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -374,35 +375,80 @@ String dailyHoroscopeCacheScope({
   return '${normalizeDailyDateKey(date)}_${zodiacKey}_$languageCode';
 }
 
-Map<String, Map<String, dynamic>> decodeCachedRemoteRankings(String? raw) {
+List<Map<String, dynamic>> normalizeRemoteRankingList(dynamic rankings) {
+  if (rankings is! List) {
+    return <Map<String, dynamic>>[];
+  }
+
+  final normalized = <Map<String, dynamic>>[];
+
+  for (final dynamic item in rankings) {
+    if (item is! Map) {
+      continue;
+    }
+
+    final ranking = Map<String, dynamic>.from(item);
+    final zodiacKey = ranking['zodiacKey'];
+    if (zodiacKey is! String || zodiacKey.isEmpty) {
+      continue;
+    }
+
+    ranking['rank'] = normalized.length + 1;
+    normalized.add(ranking);
+  }
+
+  return normalized;
+}
+
+Map<String, Map<String, dynamic>> buildRemoteRankingsByZodiac(
+  List<Map<String, dynamic>> rankings,
+) {
+  final normalized = <String, Map<String, dynamic>>{};
+
+  for (final ranking in rankings) {
+    final zodiacKey = ranking['zodiacKey'];
+    if (zodiacKey is! String || zodiacKey.isEmpty) {
+      continue;
+    }
+
+    normalized[zodiacKey] = ranking;
+  }
+
+  return normalized;
+}
+
+List<String> remoteRankingDebugList(List<Map<String, dynamic>> rankings) {
+  return rankings.map((ranking) {
+    final rank = ranking['rank'];
+    final zodiacKey = ranking['zodiacKey'];
+    final zodiacKo = ranking['zodiacKo'];
+    final zodiacJa = ranking['zodiacJa'];
+    return '$rank:$zodiacKey:$zodiacKo:$zodiacJa';
+  }).toList();
+}
+
+Map<String, int> remoteRankingRankMap(List<Map<String, dynamic>> rankings) {
+  final mapped = <String, int>{};
+
+  for (final int index = 0; index < rankings.length; index++) {
+    final zodiacKey = rankings[index]['zodiacKey'];
+    if (zodiacKey is String && zodiacKey.isNotEmpty) {
+      mapped[zodiacKey] = index + 1;
+    }
+  }
+
+  return mapped;
+}
+
+List<Map<String, dynamic>> decodeCachedRemoteRankings(String? raw) {
   if (raw == null || raw.trim().isEmpty) {
-    return <String, Map<String, dynamic>>{};
+    return <Map<String, dynamic>>[];
   }
 
   try {
-    final decoded = jsonDecode(raw);
-    if (decoded is! List) {
-      return <String, Map<String, dynamic>>{};
-    }
-
-    final normalized = <String, Map<String, dynamic>>{};
-    for (final dynamic item in decoded) {
-      if (item is! Map) {
-        continue;
-      }
-
-      final ranking = Map<String, dynamic>.from(item);
-      final zodiacKey = ranking['zodiacKey'];
-      if (zodiacKey is! String || zodiacKey.isEmpty) {
-        continue;
-      }
-
-      normalized[zodiacKey] = ranking;
-    }
-
-    return normalized;
+    return normalizeRemoteRankingList(jsonDecode(raw));
   } catch (_) {
-    return <String, Map<String, dynamic>>{};
+    return <Map<String, dynamic>>[];
   }
 }
 
@@ -817,6 +863,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final ScreenshotController _shareCardScreenshotController =
       ScreenshotController();
   Map<String, dynamic>? _dailyHoroscopeResult;
+  List<Map<String, dynamic>> _remoteRankingList = <Map<String, dynamic>>[];
   Map<String, Map<String, dynamic>> _remoteRankingsByZodiac =
       <String, Map<String, dynamic>>{};
   bool _isDailyHoroscopeLoading = true;
@@ -903,10 +950,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, int> get _resolvedRankingsByZodiac {
     final resolved = <String, int>{};
 
-    for (final entry in _remoteRankingsByZodiac.entries) {
-      final remoteRank = entry.value['rank'];
-      if (remoteRank is int) {
-        resolved[entry.key] = remoteRank;
+    for (final int index = 0; index < _remoteRankingList.length; index++) {
+      final ranking = _remoteRankingList[index];
+      final zodiacKey = ranking['zodiacKey'];
+      if (zodiacKey is String && zodiacKey.isNotEmpty) {
+        resolved[zodiacKey] = index + 1;
       }
     }
 
@@ -938,20 +986,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _logRankingArrayAudit(
     String stage, {
-    Map<String, Map<String, dynamic>>? remoteRankings,
+    List<Map<String, dynamic>>? remoteRankings,
   }) {
-    final sourceRankings = <String, int>{};
-    final source = remoteRankings ?? _remoteRankingsByZodiac;
-
-    for (final entry in source.entries) {
-      final rank = entry.value['rank'];
-      if (rank is int) {
-        sourceRankings[entry.key] = rank;
-      }
-    }
+    final source = remoteRankings ?? _remoteRankingList;
+    final sourceRankings = remoteRankingRankMap(source);
 
     debugPrint(
       '[rank-audit] $stage.arrays | date=${_todayString()} | '
+      'rankList=${remoteRankingDebugList(source)} | '
       'source=${_sortedRankingArray(sourceRankings)} | '
       'app=${_sortedRankingArray(_resolvedRankingsByZodiac)}',
     );
@@ -1001,15 +1043,18 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _dailyHoroscopeResult = widget.initialDailyHoroscopeResult;
-    final initialRemoteRankings =
-        widget.initialDailyHoroscopeResult?['remoteRankings']
-            as Map<String, Map<String, dynamic>>? ??
-        <String, Map<String, dynamic>>{};
+    final initialRemoteRankings = normalizeRemoteRankingList(
+      widget.initialDailyHoroscopeResult?['remoteRankings'],
+    );
     if (initialRemoteRankings.isNotEmpty) {
-      _remoteRankingsByZodiac = initialRemoteRankings;
+      _remoteRankingList = initialRemoteRankings;
+      _remoteRankingsByZodiac = buildRemoteRankingsByZodiac(initialRemoteRankings);
       _dailyHoroscopeResult = Map<String, dynamic>.from(
         widget.initialDailyHoroscopeResult!,
       )..remove('remoteRankings');
+    } else {
+      _remoteRankingList = <Map<String, dynamic>>[];
+      _remoteRankingsByZodiac = <String, Map<String, dynamic>>{};
     }
     _isDailyHoroscopeLoading = widget.initialDailyHoroscopeResult == null;
     _logDailyResultAudit(
@@ -1365,28 +1410,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return Uri.parse('$_appShareUrl/api/ohaasa');
   }
 
-  Map<String, Map<String, dynamic>> _normalizeRemoteRankings(dynamic rankings) {
-    if (rankings is! List) {
-      return <String, Map<String, dynamic>>{};
-    }
-
-    final normalized = <String, Map<String, dynamic>>{};
-
-    for (final dynamic item in rankings) {
-      if (item is! Map) {
-        continue;
-      }
-
-      final ranking = Map<String, dynamic>.from(item);
-      final zodiacKey = ranking['zodiacKey'];
-      if (zodiacKey is! String || zodiacKey.isEmpty) {
-        continue;
-      }
-
-      normalized[zodiacKey] = ranking;
-    }
-
-    return normalized;
+  List<Map<String, dynamic>> _normalizeRemoteRankings(dynamic rankings) {
+    return normalizeRemoteRankingList(rankings);
   }
 
   bool _containsJapanese(String text) {
@@ -2947,10 +2972,11 @@ class _HomeScreenState extends State<HomeScreen> {
         debugPrint('_fetchRemoteDailyHoroscope: rankings empty');
         return null;
       }
+      final remoteRankingsByZodiac = buildRemoteRankingsByZodiac(remoteRankings);
 
       debugPrint(
         '[rank-audit] remote_rankings.normalized | date=${normalizeDailyDateKey(payload['date'] as String?)} | '
-        'zodiac=${widget.zodiacKey} | selectedEntryRank=${remoteRankings[widget.zodiacKey]?['rank']} | '
+        'zodiac=${widget.zodiacKey} | selectedEntryRank=${remoteRankingsByZodiac[widget.zodiacKey]?['rank']} | '
         'count=${remoteRankings.length}',
       );
       _logRankingArrayAudit(
@@ -2958,7 +2984,7 @@ class _HomeScreenState extends State<HomeScreen> {
         remoteRankings: remoteRankings,
       );
 
-      final remoteEntry = remoteRankings[widget.zodiacKey];
+      final remoteEntry = remoteRankingsByZodiac[widget.zodiacKey];
       final messageField = _language == AppLanguage.en ? 'messageEn' : 'messageKo';
       final actionField = _language == AppLanguage.en ? 'actionEn' : 'actionKo';
       final message = _sanitizeLocalizedMessage(
@@ -3027,8 +3053,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _saveDailyHoroscope(
     Map<String, dynamic> result, {
-    Map<String, Map<String, dynamic>> remoteRankings =
-        const <String, Map<String, dynamic>>{},
+    List<Map<String, dynamic>> remoteRankings = const <Map<String, dynamic>>[],
   }) async {
     final sanitizedMessage = _sanitizeLocalizedMessage(
       result['message'],
@@ -3110,15 +3135,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (remoteRankings.isEmpty) {
       await preferences.remove(horoscopeRemoteRankingsPreferenceKey);
     } else {
-      final rankingsList = remoteRankings.values.toList()
-        ..sort(
-          (a, b) => ((a['rank'] as int?) ?? 999).compareTo(
-            (b['rank'] as int?) ?? 999,
-          ),
-        );
       await preferences.setString(
         horoscopeRemoteRankingsPreferenceKey,
-        jsonEncode(rankingsList),
+        jsonEncode(remoteRankings),
       );
     }
     _logDailyResultAudit(
@@ -3244,11 +3263,16 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
-        final savedRemoteRankings =
-            savedResult['remoteRankings'] as Map<String, Map<String, dynamic>>? ??
-            <String, Map<String, dynamic>>{};
+        final savedRemoteRankings = normalizeRemoteRankingList(
+          savedResult['remoteRankings'],
+        );
         if (savedRemoteRankings.isNotEmpty) {
-          _remoteRankingsByZodiac = savedRemoteRankings;
+          _remoteRankingList = savedRemoteRankings;
+          _remoteRankingsByZodiac =
+              buildRemoteRankingsByZodiac(savedRemoteRankings);
+        } else {
+          _remoteRankingList = <Map<String, dynamic>>[];
+          _remoteRankingsByZodiac = <String, Map<String, dynamic>>{};
         }
         _dailyHoroscopeResult = Map<String, dynamic>.from(savedResult);
         _dailyHoroscopeResult!.remove('remoteRankings');
@@ -3274,9 +3298,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final remoteResult = await _fetchRemoteDailyHoroscope();
     final generatedResult = _generateDailyHoroscope();
     final result = remoteResult ?? generatedResult;
-    final remoteRankings =
-        remoteResult?['remoteRankings'] as Map<String, Map<String, dynamic>>? ??
-        <String, Map<String, dynamic>>{};
+    final remoteRankings = normalizeRemoteRankingList(
+      remoteResult?['remoteRankings'],
+    );
 
     debugPrint(
       '[daily-audit] source_resolution | '
@@ -3299,7 +3323,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       if (remoteRankings.isNotEmpty) {
-        _remoteRankingsByZodiac = remoteRankings;
+        _remoteRankingList = remoteRankings;
+        _remoteRankingsByZodiac = buildRemoteRankingsByZodiac(remoteRankings);
+      } else {
+        _remoteRankingList = <Map<String, dynamic>>[];
+        _remoteRankingsByZodiac = <String, Map<String, dynamic>>{};
       }
       _isDailyHoroscopeLoading = false;
       _interactiveMessageOverride = null;
@@ -3735,6 +3763,28 @@ class _HomeScreenState extends State<HomeScreen> {
     return file;
   }
 
+  Future<bool> _saveImageToGallery({
+    required Uint8List bytes,
+    required String filename,
+  }) async {
+    final result = await ImageGallerySaverPlus.saveImage(
+      bytes,
+      quality: 100,
+      name: filename.replaceAll('.png', ''),
+    );
+    if (result is Map) {
+      final dynamic success = result['isSuccess'] ?? result['success'];
+      if (success is bool) {
+        return success;
+      }
+      final dynamic filePath = result['filePath'];
+      if (filePath is String && filePath.trim().isNotEmpty) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Rect? _shareOriginRect() {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) {
@@ -3833,6 +3883,27 @@ class _HomeScreenState extends State<HomeScreen> {
         'morning_ohasa_${DateTime.now().millisecondsSinceEpoch}.png';
 
     try {
+      if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+        debugPrint('saveCurrentScreenImage: saving image to gallery');
+        final didSave = await _saveImageToGallery(
+          bytes: bytes,
+          filename: filename,
+        );
+        if (!mounted) {
+          return;
+        }
+        if (didSave) {
+          _showDelightSnackBar(
+            '✨ 사진 보관함에 저장했어',
+            '✨ Saved to your photo library',
+          );
+          return;
+        }
+        debugPrint(
+          'saveCurrentScreenImage: gallery save returned false, falling back to share sheet',
+        );
+      }
+
       debugPrint('saveCurrentScreenImage: opening share sheet for image');
       await _openImageShareSheet(bytes: bytes, filename: filename);
 
@@ -4042,6 +4113,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<MapEntry<String, ZodiacMeta>> get _rankedZodiacs {
+    if (_remoteRankingList.isNotEmpty) {
+      final ordered = <MapEntry<String, ZodiacMeta>>[];
+      final seen = <String>{};
+
+      for (final ranking in _remoteRankingList) {
+        final zodiacKey = ranking['zodiacKey'];
+        final zodiac = zodiacKey is String ? zodiacMeta[zodiacKey] : null;
+        if (zodiac == null || !seen.add(zodiacKey)) {
+          continue;
+        }
+        ordered.add(MapEntry<String, ZodiacMeta>(zodiacKey, zodiac));
+      }
+
+      for (final entry in zodiacMeta.entries) {
+        if (seen.add(entry.key)) {
+          ordered.add(entry);
+        }
+      }
+
+      return ordered;
+    }
+
     final entries = zodiacMeta.entries.toList();
     entries.sort(
       (MapEntry<String, ZodiacMeta> a, MapEntry<String, ZodiacMeta> b) =>

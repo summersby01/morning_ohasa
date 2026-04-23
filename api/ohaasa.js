@@ -631,6 +631,7 @@ module.exports = async function handler(request, response) {
     console.info('[api/ohaasa] source ranking order', {
       fetchTimestamp,
       sourceDate: pageDate,
+      rankList: rankingOrder,
       sourceRankings: rankings.map((ranking) => `${ranking.rank}:${ranking.zodiacKey}`),
     });
 
